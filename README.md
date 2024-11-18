@@ -1,4 +1,4 @@
-# py-ssh-terminal
+# alfresco-ssh
 Inspired by: 
 - [cs01/pyxtermjs](https://github.com/cs01/pyxtermjs) (used as a base structure)
 - [huashengdun/webssh](https://github.com/huashengdun/webssh)
