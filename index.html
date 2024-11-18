@@ -1,0 +1,212 @@
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>SSH Terminal</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+        }
+
+        #terminal {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+    <!-- xterm css -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/xterm@4.11.0/css/xterm.css"
+    />
+</head>
+<body>
+<div id="terminal"></div>
+
+<!-- xterm -->
+<script src="https://unpkg.com/xterm@4.11.0/lib/xterm.js"></script>
+
+<!-- xterm addons -->
+<script src="https://unpkg.com/xterm-addon-fit@0.5.0/lib/xterm-addon-fit.js"></script>
+<script src="https://unpkg.com/xterm-addon-web-links@0.4.0/lib/xterm-addon-web-links.js"></script>
+<script src="https://unpkg.com/xterm-addon-search@0.8.0/lib/xterm-addon-search.js"></script>
+
+<!-- socket.io -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+
+<script>
+    //****************************//
+    //       TERMINAL SETUP       //
+    //****************************//
+
+
+    // Create terminal
+    const term = new Terminal({
+        cursorBlink: true,
+        macOptionIsMeta: true,
+        scrollback: true,
+    });
+
+    // Copy and paste support
+    term.attachCustomKeyEventHandler(customKeyEventHandler);
+
+    // Load xtermjs addons
+    const fit = new FitAddon.FitAddon();                // https://github.com/xtermjs/xterm.js/issues/2941
+    term.loadAddon(fit);                                // Adapt the terminal to the size of the container
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());  // Enable clickable links
+    term.loadAddon(new SearchAddon.SearchAddon());      // Enable search function
+
+
+    // Open the terminal and adapt it to the container
+    term.open(document.getElementById("terminal"));
+    fit.fit();
+
+    // Set the initial size of the terminal's columns and rows
+    term.resize(15, 50);
+    console.log(`size: ${term.cols} columns, ${term.rows} rows`);
+    fit.fit();
+
+    // Welcome messages on the first lines of the terminal
+    term.writeln("Welcome!");
+    term.writeln('')
+    term.writeln("You can copy with CTRL+SHIFT+X");
+    term.writeln("You can paste with CTRL+SHIFT+V");
+    term.writeln('')
+    term.writeln('Wait...')
+    term.writeln('')
+
+    // Set the debounced resize function
+    const wait_ms = 50;
+    window.onresize = debounce(fitToScreen, wait_ms);
+
+
+    //****************************//
+    //    SERVER COMMUNICATION    //
+    //****************************//
+
+
+    /**
+     * A variable representing a connection to the server using Socket.IO
+     * @namespace `/ssh`
+     */
+    const socket = io.connect("/ssh");
+    let is_disconnected = false;
+
+    /**
+     * The UUID that will be used to start a new session
+     */
+    const create_session_id = "{{ create_session_id }}";
+
+    /**
+     * Fit the terminal to the screen when the connection is established
+     * @event `connect`
+     */
+    socket.on("connect", () => {
+        fitToScreen();
+        console.log("Connected");
+        socket.emit("start-session", {create_session_id: create_session_id});
+    });
+
+    /**
+     * Take the inserted input from the terminal and send it to the server
+     * @event `ssh-input`
+     */
+    term.onData((data) => {
+        if (!is_disconnected) {
+            console.log("Browser terminal received new data:", data);
+            socket.emit("ssh-input", {input: data});
+        }
+    });
+
+    /**
+     * Handle the output of the terminal by writing it on a line
+     * @event `ssh-output`
+     */
+    socket.on("ssh-output", (data) => {
+        console.log("New output received from server:", data.output);
+        term.write(data.output);
+    });
+
+    /**
+     * Close the connection when the connection is terminated on the server
+     * @event `disconnect`
+     */
+    socket.on("disconnect", () => {
+        console.log("Disconnected");
+        is_disconnected = true;
+    });
+
+
+    //****************************//
+    //      UTILS FUNCTIONS       //
+    //****************************//
+
+
+    /**
+     * Adjusts the terminal size to fit the screen and communicates the new dimensions
+     * to the server
+     * @event `resize`
+     */
+    function fitToScreen() {
+        fit.fit();
+        const dims = {cols: term.cols, rows: term.rows};
+        console.log("sending new dimensions to server's ssh", dims);
+        socket.emit("resize", dims);
+    }
+
+    /**
+     * Reduces the frequency at which the `fitToScreen` function is called during the dimensioning of the terminal,
+     * preventing eccessive requests to the server
+     *
+     * @param {Function} func - The function to debounce.
+     * @param {number} wait_ms - The number of milliseconds to delay.
+     * @return {Function} - A new debounced function.
+     */
+    function debounce(func, wait_ms) {
+        let timeout;
+        return function (...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), wait_ms);
+        };
+    }
+
+    /**
+     * Handle copy and paste events:
+     * - `Ctrl+Shift+X` to copy
+     * - `Ctrl+Shift+V` to paste
+     *
+     * @param {Event} e - The event
+     */
+    function customKeyEventHandler(e) {
+        if (e.type !== "keydown") {
+            return true;
+        }
+        if (e.ctrlKey && e.shiftKey) {
+            const key = e.key.toLowerCase();
+            if (key === "v") {
+                // ctrl+shift+v: paste whatever is in the clipboard
+                navigator.clipboard.readText().then((toPaste) => {
+                    term.writeText(toPaste);
+                });
+                return false;
+            } else if (key === "c" || key === "x") {
+                // ctrl+shift+x: copy whatever is highlighted to clipboard
+
+                // 'x' is used as an alternate to 'c' because ctrl+c is taken
+                // by the terminal (SIGINT) and ctrl+shift+c is taken by the browser
+                // (open devtools).
+                // I'm not aware of ctrl+shift+x being used by anything in the terminal
+                // or browser
+                const toCopy = term.getSelection();
+                navigator.clipboard.writeText(toCopy);
+                term.focus();
+                return false;
+            }
+        }
+        return true;
+    }
+</script>
+</body>
+</html>
