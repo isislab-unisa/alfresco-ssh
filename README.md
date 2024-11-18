@@ -1,7 +1,96 @@
 # alfresco-ssh
-Inspired by: 
-- [cs01/pyxtermjs](https://github.com/cs01/pyxtermjs) (used as a base structure)
-- [huashengdun/webssh](https://github.com/huashengdun/webssh)
+A web-based terminal emulator designed to facilitate remote SSH connections via a browser. 
+Inspired by projects like [cs01/pyxtermjs](https://github.com/cs01/pyxtermjs) and [huashengdun/webssh](https://github.com/huashengdun/webssh), it combines a server-side Python 
+implementation with a modern browser-based client interface.
+
+It supports authentication with password and SSH keys.
+
+
+## How to use it
+### Start the server
+
+```shell
+python app.py [args]
+```
+
+The args are:
+- `--port`: The port where the server runs (_default is 5000_)
+- `--host`: The host where the server runs, there are two possible values:
+    - `127.0.0.1`: The server will be only reachable on localhost (_default_)
+    - `0.0.0.0`: The server will be reachable on the local network
+- `--debug`: Debug the server
+- `--version`: Prints the version of the program and exits
+
+### Request a terminal
+To request a terminal you can use any programming language that can send an HTTP request.
+
+As an example, I will use Python with [requests](https://pypi.org/project/requests/).
+
+#### Prepare the credentials for the SSH connection
+
+You must have:
+- `hostname`
+- `port` (_if not provided, it is 22_)
+- `username`
+- `password` or `ssh_key` (_the SSH key will take priority_)
+
+```python
+data = {
+  "hostname": "123.456.789.100",
+  "port": 22,
+  "username": "john_smith",
+  "password": "my_password" # If you have to use the SSH key, omit this
+}
+
+# If you have used a password in data, omit this
+files = {
+  "ssh_key": b"my-ssh-key-bytes"
+}
+```
+
+#### Make a POST HTTP request
+
+It must be done to the `/create-session` endpoint, sending the credentials prepared before.
+
+- If you have used a password, you must make an `application/json` request.
+- If you have used an SSH key, you must make an `multipart/form-data` request.
+
+In both cases, you will obtain a json containing either:
+- `create_session_id` and `url`, where `url` is the terminal url for the new session
+- `error`, if there is an error
+
+```python
+import requests
+server_url = "http://127.0.0.1:5000"
+endpoint = "/create-session"
+
+# Request with password
+response = requests.post(server_url + endpoint, data=data)
+
+# Request with SSH key
+response = requests.post(server_url + endpoint, data=data, files=files)
+```
+
+#### Use the terminal in the browser
+You can take the `url` from the response json and use it directly in the browser.
+
+```python
+response_json = response.json()
+
+if "error" in response_json:
+  print(f"Error: {response_json["error"]}")
+elif "url" in response_json:
+  print(f"Success: {response_json["url"]}")
+else:
+  print(f"Unknown error")
+```
+
+It even works in an `<iframe>` HTML tag.
+
+```html
+<iframe src="the_url" width="800" height="600"></iframe>
+```
+
 
 ## How does it work
 This project uses: 
@@ -34,9 +123,9 @@ sequenceDiagram
     S->>S: Render Template (HTML, UUID)
     S-->>U: HTML (UUID)
     U->>U: Execute HTML JavaScript
-    U->>S: JS: Send ("connect")
+    U->>S: JS: Send Message ("connect")
     S-->>U: Connected with Web Socket
-    U->>S: JS: Send ("start-session", UUID)
+    U->>S: JS: Send Message ("start-session", UUID)
     S->>S: Get (credentials, UUID)
     S->>R: Connect to Remote (credentials)
     R-->>S: Paramiko Interactive Shell (ssh session)
@@ -59,11 +148,11 @@ sequenceDiagram
 
     S->>S: Continuously read Remote Terminal output (SessionID)
     U->>U: Type a key in the terminal
-    U->>S: JS: Send ("ssh-input", input)
+    U->>S: JS: Send Message ("ssh-input", input)
     S->>R: Send to Remote (input)
     R->>R: Put in Terminal (input)
     R-->>S: Send to Server (output)
-    S-->>U: Send ("ssh-output", output)
+    S-->>U: Send Message ("ssh-output", output)
     U->>U: JS: Replace current output (output)
     
 ```

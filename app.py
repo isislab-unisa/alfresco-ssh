@@ -99,10 +99,11 @@ def ssh_input(data):
 		if len(data["input"]) == 1:
 			logging.debug(f"received input from client terminal {sid}: {data["input"]} ({ord(data['input'])})")
 
-			# Put the character in the input line buffer
-			# buffer: list[int] = ssh_sessions.get(sid, {}).get("input_line_buffer")
-			# ssh_sessions[sid]["input_line_buffer"] = add_char_to_input_line_buffer(buffer, ord(data["input"]))
-			# logging.debug(f"input buffer for {sid}: {ssh_sessions[sid]["input_line_buffer"]}")
+		# Put the character in the input line buffer
+		# buffer: list[int] = ssh_sessions.get(sid, {}).get("input_line_buffer")
+		# ssh_sessions[sid]["input_line_buffer"] = add_char_to_input_line_buffer(buffer, ord(data["input"]))
+		# logging.debug(f"input buffer for {sid}: {ssh_sessions[sid]["input_line_buffer"]}")
+
 		else:
 			logging.debug(f"received input from client terminal {sid}: {data["input"]} (special key)")
 
@@ -198,6 +199,7 @@ def start_session(data):
 			# "input_line_buffer": []
 		}
 
+		# According to https://github.com/cs01/pyxtermjs:
 		# Logging/print statements must go after this
 		# If they come before, the background task never starts
 		socketio.start_background_task(target=read_and_emit_ssh_output, sid=sid)
@@ -246,7 +248,7 @@ def create_session():
 			if "ssh_key" not in request.files:
 				return jsonify({"error": "No SSH key file provided"}), 400
 
-			ssh_key_file = request.files["ssh_key"]
+			ssh_key_file = request.files["ssh_key"]  # TODO: Maybe instead of a file, a string can be sent
 			ssh_key_content = ssh_key_file.read().decode("utf-8")
 
 			# Generate a unique session ID (UUID)
@@ -320,11 +322,14 @@ def main():
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
 
-	parser.add_argument("-p", "--port", default=5000, help="Port to run server on", type=int)
+	parser.add_argument("--port", default=5000,
+						help="The port where the server runs (default is 5000)", type=int)
 	parser.add_argument("--host", default="127.0.0.1",
-						help="Host to run server on (use 0.0.0.0 to allow access from other hosts)", )
-	parser.add_argument("--debug", action="store_true", help="Debug the server")
-	parser.add_argument("--version", action="store_true", help="Print version and exit")
+						help="The host where the server runs (use 0.0.0.0 to allow access from local network)")
+	parser.add_argument("--debug", action="store_true",
+						help="Debug the server")
+	parser.add_argument("--version", action="store_true",
+						help="Prints the version of the program and exits")
 
 	args = parser.parse_args()
 
