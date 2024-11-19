@@ -1,6 +1,7 @@
 import argparse
 import os
 import logging
+import socket
 import sys
 
 from message_handlers import register_message_handlers
@@ -63,7 +64,11 @@ def main():
 		level=logging.DEBUG if args.debug else logging.INFO,
 	)
 
-	logging.info(f"serving on http://{args.host}:{args.port}")
+	if args.host == "0.0.0.0":
+		local_network_ip = socket.gethostbyname(socket.gethostname())
+		logging.info(f"serving on local network http://{local_network_ip}:{args.port}")
+	else:
+		logging.info(f"serving on http://{args.host}:{args.port}")
 
 	################################
 	#    START SOCKET.IO SERVER    #

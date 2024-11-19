@@ -1,10 +1,9 @@
 import io
 import logging
-
 import paramiko
+
 from flask import request
 from flask_socketio import SocketIO, disconnect
-
 from message_senders import send_ssh_output
 from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
 from utils import decrypt_credentials, cypher, RED, RESET

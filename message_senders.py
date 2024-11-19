@@ -1,7 +1,6 @@
 import logging
 
 from flask_socketio import SocketIO
-
 from stores import SSH_SESSION_STORE
 from utils import color_hostname_in_output
 
