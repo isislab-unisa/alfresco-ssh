@@ -103,9 +103,9 @@
      * @event `connect`
      */
     socket.on("connect", () => {
-        fitToScreen();
-        console.log("Connected");
         socket.emit("start-session", {create_session_id: create_session_id});
+        console.log("Connected");
+        fitToScreen();
     });
 
     /**

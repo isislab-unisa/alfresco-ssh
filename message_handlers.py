@@ -183,5 +183,5 @@ def handle_resize(data):
 	ssh_channel = SSH_SESSION_STORE.get(sid, {}).get("channel")
 
 	if ssh_channel:
-		logging.debug(f"resizing terminal {sid} window to {data['rows']}x{data['cols']}")
+		logging.debug(f"resizing terminal {sid} window to cols={data['cols']}, rows={data['rows']}")
 		ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
