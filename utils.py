@@ -1,5 +1,8 @@
 import logging
+import os
 import re
+
+from cryptography.fernet import Fernet
 
 # Colors
 GREEN = "\033[92m"
@@ -7,6 +10,9 @@ BLUE = "\033[94m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
+# Cypher
+CREDENTIALS_KEY = os.getenv("CREDENTIALS_KEY", Fernet.generate_key())
+cypher = Fernet(CREDENTIALS_KEY)
 
 def color_hostname_in_output(output) -> str:
 	"""
@@ -125,3 +131,6 @@ def encrypt_credentials(credentials, cipher):
 
 def decrypt_credentials(encrypted_credentials, cipher):
 	return eval(cipher.decrypt(encrypted_credentials).decode())
+
+
+

@@ -1,15 +1,15 @@
 import argparse
 import io
 import os
-import uuid
 import paramiko
 import logging
 import sys
 
-from utils import color_hostname_in_output, GREEN, RED, RESET, sanitize_input, encrypt_credentials, decrypt_credentials
-from flask import Flask, render_template, request, jsonify
+from routes import routes_blueprint
+from utils import color_hostname_in_output, GREEN, RED, RESET, decrypt_credentials, cypher
+from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
+from flask import Flask, request
 from flask_socketio import SocketIO, disconnect
-from cryptography.fernet import Fernet
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
@@ -25,16 +25,7 @@ app = Flask(
 
 # Security
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", os.urandom(24))
-CREDENTIALS_KEY = os.getenv("CREDENTIALS_KEY", Fernet.generate_key())
-cypher = Fernet(CREDENTIALS_KEY)
 
-# Dictionary to keep the SSH session for each connected user
-# TODO: Find a way to limit the number of sessions
-ssh_sessions = {}
-
-# Dictionary to keep the SSH credentials for each created session
-# TODO: Find a way to delete credentials for unused url
-credentials_store = {}
 
 # Socket.IO
 socketio = SocketIO(app, async_mode="eventlet")  # TODO: Search for another async mode
@@ -44,7 +35,7 @@ def close_connection(sid):
 	"""
 	Handles the disconnection of the client terminal and closes the ssh session
 	"""
-	session = ssh_sessions.pop(sid, None)
+	session = SSH_SESSION_STORE.pop(sid, None)
 
 	if session:
 		session["channel"].close()
@@ -67,7 +58,7 @@ def read_and_emit_ssh_output(sid):
 	:param sid: The session id of the source client terminal
 	"""
 	max_read_bytes = 1024 * 20
-	ssh_channel = ssh_sessions[sid]["channel"]
+	ssh_channel = SSH_SESSION_STORE[sid]["channel"]
 
 	while True:
 		socketio.sleep(0.01)
@@ -93,7 +84,7 @@ def ssh_input(data):
 	:param data: Has `input`
 	"""
 	sid = request.sid
-	ssh_channel = ssh_sessions.get(sid, {}).get("channel")
+	ssh_channel = SSH_SESSION_STORE.get(sid, {}).get("channel")
 
 	if ssh_channel and ssh_channel.send_ready():
 		if len(data["input"]) == 1:
@@ -123,7 +114,7 @@ def resize(data):
 	:param data: Has `cols` and `rows`
 	"""
 	sid = request.sid
-	ssh_channel = ssh_sessions.get(sid, {}).get("channel")
+	ssh_channel = SSH_SESSION_STORE.get(sid, {}).get("channel")
 
 	if ssh_channel:
 		logging.debug(f"resizing terminal {sid} window to {data['rows']}x{data['cols']}")
@@ -140,14 +131,14 @@ def start_session(data):
 	sid = request.sid
 	create_session_id = data['create_session_id']
 
-	if create_session_id not in credentials_store:
+	if create_session_id not in CREDENTIAL_STORE:
 		logging.error(f"Invalid create connection ID: {create_session_id}")
 		disconnect()
 
 	logging.info(f"new client connected (created with {create_session_id}): {sid}")
 
 	try:
-		encrypted_credentials = credentials_store.pop(create_session_id, None)
+		encrypted_credentials = CREDENTIAL_STORE.pop(create_session_id, None)
 
 		if not encrypted_credentials:
 			raise Exception(f"No credentials found for {create_session_id}")
@@ -193,7 +184,7 @@ def start_session(data):
 		ssh_channel = ssh_client.invoke_shell()
 		ssh_channel.settimeout(0.0)
 
-		ssh_sessions[sid] = {
+		SSH_SESSION_STORE[sid] = {
 			"client": ssh_client,
 			"channel": ssh_channel,
 			# "input_line_buffer": []
@@ -223,89 +214,6 @@ def disconnect_handler():
 	"""
 	sid = request.sid
 	close_connection(sid)
-
-
-@app.route("/<create_session_id>")
-def terminal(create_session_id):
-	if create_session_id not in credentials_store:
-		return "Session not found", 404
-
-	logging.info(f"requested a terminal with {create_session_id}")
-	return render_template("index.html", create_session_id=create_session_id)
-
-
-@app.route("/create-session", methods=["POST"])
-def create_session():
-	"""Receives SSH credentials via POST request and returns a UUID."""
-
-	try:
-		if request.content_type.startswith("multipart/form-data"):
-			# SSH Key authentication
-			hostname = request.form["hostname"]
-			port = int(request.form.get("port", 22))
-			username = request.form["username"]
-
-			if "ssh_key" not in request.files:
-				return jsonify({"error": "No SSH key file provided"}), 400
-
-			ssh_key_file = request.files["ssh_key"]  # TODO: Maybe instead of a file, a string can be sent
-			ssh_key_content = ssh_key_file.read().decode("utf-8")
-
-			# Generate a unique session ID (UUID)
-			create_session_id = str(uuid.uuid4())
-			logging.info(f"generated a new create_session_id: {create_session_id}")
-
-			credentials = {
-				"hostname": hostname,
-				"port": port,
-				"username": username,
-				"ssh_key": ssh_key_content,
-			}
-			credentials_store[create_session_id] = encrypt_credentials(credentials, cypher)
-			logging.debug(f"credentials for {create_session_id} encrypted")
-
-		elif request.content_type == "application/json":
-			# Password authentication
-			data = sanitize_input(request.json)
-			hostname = data["hostname"]
-			port = int(data.get("port", 22))
-			username = data["username"]
-			password = data["password"]
-
-			# Generate a unique session ID (UUID)
-			create_session_id = str(uuid.uuid4())
-			logging.info(f"generated a new create_session_id: {create_session_id}")
-
-			credentials = {
-				"hostname": hostname,
-				"port": port,
-				"username": username,
-				"password": password,
-			}
-			credentials_store[create_session_id] = encrypt_credentials(credentials, cypher)
-			logging.debug(f"credentials for {create_session_id} encrypted")
-
-		else:
-			return jsonify({"error": "Unsupported content type"}), 400
-
-		url = f"{request.scheme}://{request.host}/{create_session_id}"
-		logging.debug(url)
-
-		return jsonify({
-			"create_session_id": create_session_id,
-			"url": url
-		}), 200
-
-
-	except KeyError as e:
-		logging.debug(e)
-		return jsonify({"error": "Missing field"}), 400
-	except ValueError as e:
-		logging.debug(e)
-		return jsonify({"error": str(e)}), 400
-	except Exception as e:
-		logging.debug(e)
-		return jsonify({"error": ""}), 500
 
 
 def main():
@@ -354,6 +262,8 @@ def main():
 	################################
 	#    START SOCKET.IO SERVER    #
 	################################
+
+	app.register_blueprint(routes_blueprint)
 
 	socketio.run(
 		app,

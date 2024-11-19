@@ -10,7 +10,7 @@ It supports authentication with password and SSH keys.
 ### Start the server
 
 ```shell
-python app.py [args]
+python main.py [args]
 ```
 
 The args are:
