@@ -144,15 +144,15 @@ def handle_ssh_input(data, socketio: SocketIO):
 
 	if ssh_channel and ssh_channel.send_ready():
 		if len(data["input"]) == 1:
-			logging.debug(f"received input from client terminal {sid}: {data["input"]} ({ord(data['input'])})")
+			logging.debug(f"received input from client terminal {sid}: {data['input']} ({ord(data['input'])})")
 
 		# Put the character in the input line buffer
 		# buffer: list[int] = ssh_sessions.get(sid, {}).get("input_line_buffer")
 		# ssh_sessions[sid]["input_line_buffer"] = add_char_to_input_line_buffer(buffer, ord(data["input"]))
-		# logging.debug(f"input buffer for {sid}: {ssh_sessions[sid]["input_line_buffer"]}")
+		# logging.debug(f"input buffer for {sid}: {ssh_sessions[sid]['input_line_buffer']}")
 
 		else:
-			logging.debug(f"received input from client terminal {sid}: {data["input"]} (special key)")
+			logging.debug(f"received input from client terminal {sid}: {data['input']} (special key)")
 
 		try:
 			ssh_channel.send(data["input"])
