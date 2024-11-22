@@ -196,5 +196,5 @@ def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seco
 			if was_created_x_seconds_ago(CREDENTIAL_STORE[key]["creation_time"], max_second_tolerance):
 				if key in CREDENTIAL_STORE: # Check if the key is still in the credential store
 					del CREDENTIAL_STORE[key]
-					logging.info(f"Deleted unused create_session_id {key} and it's credentials because it was created"
-							 f" more than {max_second_tolerance} seconds ago")
+					logging.info(f"Deleted unused create_session_id {key} and it's credentials because "
+								 f"they were created more than {max_second_tolerance} seconds ago")
