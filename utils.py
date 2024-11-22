@@ -2,6 +2,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
+from pprint import pprint
 from time import sleep
 
 from cryptography.fernet import Fernet
@@ -17,7 +18,7 @@ RESET = "\033[0m"
 
 # Cypher
 CREDENTIALS_KEY = os.getenv("CREDENTIALS_KEY", Fernet.generate_key())
-cypher = Fernet(CREDENTIALS_KEY)
+cipher = Fernet(CREDENTIALS_KEY)
 
 def color_hostname_in_output(output) -> str:
 	"""
@@ -131,11 +132,53 @@ def sanitize_input(data):
 	return sanitized_data
 
 
-def encrypt_credentials(credentials, cipher):
-	return cipher.encrypt(str(credentials).encode())
+def encrypt_credentials(credentials):
+	hostname: str = credentials["hostname"]
+	port: int = credentials["port"]
+	username: str = credentials["username"]
+	creation_time: datetime = credentials["creation_time"]
 
-def decrypt_credentials(encrypted_credentials, cipher):
-	return eval(cipher.decrypt(encrypted_credentials).decode())
+	encrypted_credentials = {
+		"hostname": cipher.encrypt(hostname.encode("utf-8")),
+		"port": cipher.encrypt(str(port).encode("utf-8")),
+		"username": cipher.encrypt(username.encode("utf-8")),
+		"creation_time": creation_time
+	}
+
+	if "ssh_key" in credentials:
+		ssh_key: str = credentials["ssh_key"]
+		encrypted_credentials["ssh_key"] = cipher.encrypt(ssh_key.encode("utf-8"))
+	elif "password" in credentials:
+		password: str = credentials["password"]
+		encrypted_credentials["password"] = cipher.encrypt(password.encode("utf-8"))
+	else:
+		raise ValueError("No ssh key or password found")
+
+	return encrypted_credentials
+
+def decrypt_credentials(encrypted_credentials):
+	hostname: bytes = encrypted_credentials["hostname"]
+	port: bytes = encrypted_credentials["port"]
+	username: bytes = encrypted_credentials["username"]
+	creation_time: datetime = encrypted_credentials["creation_time"]
+
+	decrypted_credentials = {
+		"hostname": cipher.decrypt(hostname).decode(),
+		"port": int(cipher.decrypt(port).decode()),
+		"username": cipher.decrypt(username).decode(),
+		"creation_time": creation_time
+	}
+
+	if "ssh_key" in encrypted_credentials:
+		ssh_key: bytes = encrypted_credentials["ssh_key"]
+		decrypted_credentials["ssh_key"] = cipher.decrypt(ssh_key).decode()
+	elif "password" in encrypted_credentials:
+		password: bytes = encrypted_credentials["password"]
+		decrypted_credentials["password"] = cipher.decrypt(password).decode()
+	else:
+		raise ValueError("No ssh key or password found")
+
+	return decrypted_credentials
 
 
 def was_created_x_seconds_ago(past_time: datetime, seconds: int) -> bool:
@@ -148,11 +191,10 @@ def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seco
 
 	while True:
 		sleep(check_interval_seconds)
-		logging.info(f"CREDENTIAL_STORE_DATES: {CREDENTIAL_STORE_DATES}")
 
-		for key in list(CREDENTIAL_STORE_DATES.keys()):
-			if was_created_x_seconds_ago(CREDENTIAL_STORE_DATES[key], max_second_tolerance):
-				del CREDENTIAL_STORE[key]
-				del CREDENTIAL_STORE_DATES[key]
-				logging.info(f"Deleted unused create_session_id {key} and it's credentials because it was created"
+		for key in list(CREDENTIAL_STORE.keys()):
+			if was_created_x_seconds_ago(CREDENTIAL_STORE[key]["creation_time"], max_second_tolerance):
+				if key in CREDENTIAL_STORE: # Check if the key is still in the credential store
+					del CREDENTIAL_STORE[key]
+					logging.info(f"Deleted unused create_session_id {key} and it's credentials because it was created"
 							 f" more than {max_second_tolerance} seconds ago")

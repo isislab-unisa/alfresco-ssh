@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from flask import request, jsonify, render_template, Blueprint
-from utils import encrypt_credentials, sanitize_input, cypher
+from utils import encrypt_credentials, sanitize_input
 from stores import CREDENTIAL_STORE, CREDENTIAL_STORE_DATES
 
 routes_blueprint = Blueprint('routes', __name__)
@@ -23,7 +23,7 @@ def create_session():
 				return jsonify({"error": "No SSH key file provided"}), 400
 
 			ssh_key_file = request.files["ssh_key"]  # TODO: Maybe instead of a file, a string can be sent
-			ssh_key_content = ssh_key_file.read().decode("utf-8")
+			ssh_key_content: str = ssh_key_file.read().decode("utf-8")
 
 			# Generate a unique session ID (UUID)
 			create_session_id = str(uuid.uuid4())
@@ -34,9 +34,9 @@ def create_session():
 				"port": port,
 				"username": username,
 				"ssh_key": ssh_key_content,
+				"creation_time": datetime.now()
 			}
-			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials, cypher)
-			CREDENTIAL_STORE_DATES[create_session_id] = datetime.now()
+			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials)
 			logging.debug(f"credentials for {create_session_id} encrypted")
 
 		elif request.content_type == "application/json":
@@ -56,9 +56,9 @@ def create_session():
 				"port": port,
 				"username": username,
 				"password": password,
+				"creation_time": datetime.now()
 			}
-			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials, cypher)
-			CREDENTIAL_STORE_DATES[create_session_id] = datetime.now()
+			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials)
 			logging.debug(f"credentials for {create_session_id} encrypted")
 
 		else:

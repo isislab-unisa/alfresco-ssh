@@ -80,7 +80,7 @@ def main():
 	credential_clean_up_thread = Thread(
 		target=delete_old_unused_credentials,
 		kwargs={
-			"max_second_tolerance": 30,
+			"max_second_tolerance": 10,
 			"check_interval_seconds": 1
 		}
 	)
@@ -92,9 +92,6 @@ def main():
 		port=args.port,
 		debug=args.debug,
 	)
-
-
-
 
 
 if __name__ == "__main__":

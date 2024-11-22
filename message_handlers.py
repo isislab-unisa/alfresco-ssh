@@ -1,12 +1,14 @@
 import io
 import logging
+from pprint import pprint
+
 import paramiko
 
 from flask import request
 from flask_socketio import SocketIO, disconnect
 from message_senders import send_ssh_output
 from stores import CREDENTIAL_STORE, SSH_SESSION_STORE, CREDENTIAL_STORE_DATES
-from utils import decrypt_credentials, cypher, RED, RESET
+from utils import decrypt_credentials, cipher, RED, RESET
 
 
 def register_message_handlers(socketio: SocketIO):
@@ -61,7 +63,7 @@ def handle_start_session(data, socketio: SocketIO):
 	sid = request.sid
 	create_session_id = data['create_session_id']
 
-	if create_session_id not in CREDENTIAL_STORE or create_session_id not in CREDENTIAL_STORE_DATES:
+	if create_session_id not in CREDENTIAL_STORE:
 		logging.error(f"Invalid create connection ID: {create_session_id}")
 		disconnect()
 
@@ -69,14 +71,13 @@ def handle_start_session(data, socketio: SocketIO):
 
 	try:
 		encrypted_credentials = CREDENTIAL_STORE.pop(create_session_id, None)
-		CREDENTIAL_STORE_DATES.pop(create_session_id, None)
 
 		if not encrypted_credentials:
 			raise Exception(f"No credentials found for {create_session_id}")
 
 		logging.debug(f"credentials for {create_session_id} taken and removed")
 
-		credentials = decrypt_credentials(encrypted_credentials, cypher)
+		credentials = decrypt_credentials(encrypted_credentials)
 		logging.debug(f"credentials for {sid} decrypted with {create_session_id}")
 
 		hostname = credentials["hostname"]
