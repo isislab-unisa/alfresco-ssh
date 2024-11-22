@@ -5,7 +5,7 @@ import paramiko
 from flask import request
 from flask_socketio import SocketIO, disconnect
 from message_senders import send_ssh_output
-from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
+from stores import CREDENTIAL_STORE, SSH_SESSION_STORE, CREDENTIAL_STORE_DATES
 from utils import decrypt_credentials, cypher, RED, RESET
 
 
@@ -27,11 +27,17 @@ def register_message_handlers(socketio: SocketIO):
 		handle_resize(data)
 
 
-def close_connection(sid, socketio: SocketIO):
+def close_connection(sid, socketio: SocketIO, create_session_id = None):
 	"""
 	Disconnects the  client terminal and closes the ssh session
 	"""
 	session = SSH_SESSION_STORE.pop(sid, None)
+
+	if (create_session_id
+			and create_session_id in CREDENTIAL_STORE
+			and create_session_id in CREDENTIAL_STORE_DATES):
+		CREDENTIAL_STORE.pop(create_session_id, None)
+		CREDENTIAL_STORE_DATES.pop(create_session_id, None)
 
 	if session:
 		session["channel"].close()
@@ -55,7 +61,7 @@ def handle_start_session(data, socketio: SocketIO):
 	sid = request.sid
 	create_session_id = data['create_session_id']
 
-	if create_session_id not in CREDENTIAL_STORE:
+	if create_session_id not in CREDENTIAL_STORE or create_session_id not in CREDENTIAL_STORE_DATES:
 		logging.error(f"Invalid create connection ID: {create_session_id}")
 		disconnect()
 
@@ -63,6 +69,7 @@ def handle_start_session(data, socketio: SocketIO):
 
 	try:
 		encrypted_credentials = CREDENTIAL_STORE.pop(create_session_id, None)
+		CREDENTIAL_STORE_DATES.pop(create_session_id, None)
 
 		if not encrypted_credentials:
 			raise Exception(f"No credentials found for {create_session_id}")

@@ -1,9 +1,10 @@
 import logging
 import uuid
+from datetime import datetime
 
 from flask import request, jsonify, render_template, Blueprint
 from utils import encrypt_credentials, sanitize_input, cypher
-from stores import CREDENTIAL_STORE
+from stores import CREDENTIAL_STORE, CREDENTIAL_STORE_DATES
 
 routes_blueprint = Blueprint('routes', __name__)
 
@@ -35,6 +36,7 @@ def create_session():
 				"ssh_key": ssh_key_content,
 			}
 			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials, cypher)
+			CREDENTIAL_STORE_DATES[create_session_id] = datetime.now()
 			logging.debug(f"credentials for {create_session_id} encrypted")
 
 		elif request.content_type == "application/json":
@@ -56,6 +58,7 @@ def create_session():
 				"password": password,
 			}
 			CREDENTIAL_STORE[create_session_id] = encrypt_credentials(credentials, cypher)
+			CREDENTIAL_STORE_DATES[create_session_id] = datetime.now()
 			logging.debug(f"credentials for {create_session_id} encrypted")
 
 		else:

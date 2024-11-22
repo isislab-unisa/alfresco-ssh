@@ -1,8 +1,13 @@
 import logging
 import os
 import re
+from datetime import datetime, timedelta
+from time import sleep
 
 from cryptography.fernet import Fernet
+from flask_socketio import SocketIO
+
+from stores import CREDENTIAL_STORE, CREDENTIAL_STORE_DATES
 
 # Colors
 GREEN = "\033[92m"
@@ -133,4 +138,21 @@ def decrypt_credentials(encrypted_credentials, cipher):
 	return eval(cipher.decrypt(encrypted_credentials).decode())
 
 
+def was_created_x_seconds_ago(past_time: datetime, seconds: int) -> bool:
+	now = datetime.now()
+	target_time = past_time + timedelta(seconds=seconds)
+	return now >= target_time
 
+def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seconds: int):
+	logging.info("Started the delete_old_unused_credentials task")
+
+	while True:
+		sleep(check_interval_seconds)
+		logging.info(f"CREDENTIAL_STORE_DATES: {CREDENTIAL_STORE_DATES}")
+
+		for key in list(CREDENTIAL_STORE_DATES.keys()):
+			if was_created_x_seconds_ago(CREDENTIAL_STORE_DATES[key], max_second_tolerance):
+				del CREDENTIAL_STORE[key]
+				del CREDENTIAL_STORE_DATES[key]
+				logging.info(f"Deleted unused create_session_id {key} and it's credentials because it was created"
+							 f" more than {max_second_tolerance} seconds ago")
