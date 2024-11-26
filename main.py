@@ -22,7 +22,7 @@ app = Flask(
 	static_url_path="",
 )
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", os.urandom(24))
-socketio = SocketIO(app, async_mode="eventlet")  # TODO: Search for another async mode
+socketio = SocketIO(app, async_mode="eventlet")  # eventlet, gevent or threading
 
 # Register functions
 app.register_blueprint(routes_blueprint)

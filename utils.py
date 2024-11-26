@@ -2,13 +2,11 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from pprint import pprint
 from time import sleep
 
 from cryptography.fernet import Fernet
-from flask_socketio import SocketIO
 
-from stores import CREDENTIAL_STORE, CREDENTIAL_STORE_DATES
+from stores import CREDENTIAL_STORE
 
 # Colors
 GREEN = "\033[92m"
@@ -22,14 +20,14 @@ cipher = Fernet(CREDENTIALS_KEY)
 
 def color_hostname_in_output(output) -> str:
 	"""
-	Color the last instance of the hostname in the output
+	Color the last instance of the hostname in the output.
+	This *probably* works only on standard UNIX $ format.
 
 	:param output: The full output string
 	:return: The colored output, if nothing has been found returns the same output
 	"""
-	pattern = r'(\S+@\S+)(:)(\~?[^$]+)(\$)'
-
 	# Find all occurrences
+	pattern = r'(\S+@\S+)(:)(\~?[^$]+)(\$)'
 	matches = list(re.finditer(pattern, output))
 
 	if matches:
@@ -37,10 +35,10 @@ def color_hostname_in_output(output) -> str:
 		last_match = matches[-1]
 
 		# Example for: `myuser@myserver:~/Documents/testFolder$`
-		# group 1 -> `myuser@myserver`
-		# group 2 -> `:`
-		# group 3 -> `~/Documents/testFolder`
-		# group 4 -> `$`
+		# group 1 -> `myuser@myserver` -> GREEN
+		# group 2 -> `:` -> DEFAULT COLOR
+		# group 3 -> `~/Documents/testFolder` -> BLUE
+		# group 4 -> `$` -> DEFAULT COLOR
 		colored_last_occurrence = (f"{GREEN}{last_match.group(1)}"
 								   f"{RESET}{last_match.group(2)}"
 								   f"{BLUE}{last_match.group(3)}"
@@ -52,13 +50,14 @@ def color_hostname_in_output(output) -> str:
 	return output
 
 
-def last_input_was_exit(buffer: list[int]) -> bool:
+def last_input_was_x(buffer: list[int], input_to_search_for: str) -> bool:
 	"""
 	**UNUSED**
 
-	Verifies if a buffer contains the command `exit` followed by an `[Enter]` character
+	Verifies if a buffer is a certain command followed by an [Enter] character.
 
-	:param buffer: List of ASCII characters
+	:param buffer: List of ASCII characters codes
+	:param input_to_search_for: The input for which the function returns `True`
 	:return: True if the command was found, False otherwise
 	"""
 	if not buffer:
@@ -67,13 +66,11 @@ def last_input_was_exit(buffer: list[int]) -> bool:
 	input_string = ""
 	for char in buffer:
 		input_string += chr(char)
+		logging.debug(f"{chr(char)} ({char})")
 
-	for char in input_string:
-		logging.debug(f"{char} ({ord(char)})")
-
-	if (input_string == "exit\n"  # LF
-			or input_string == "exit\r"  # CR
-			or input_string == "exit\r\n"):  # CRLF
+	if (input_string == f"{input_to_search_for}\n"  # LF
+			or input_string == f"{input_to_search_for}\r"  # CR
+			or input_string == f"{input_to_search_for}\r\n"):  # CRLF
 		logging.debug("True")
 		return True
 
@@ -85,27 +82,27 @@ def add_char_to_input_line_buffer(input_line_buffer: list[int], ascii_char: int)
 	"""
 	**UNUSED**
 
-	Add an ascii character into the `input_line_buffer` of a session
+	Add an ascii character into the `input_line_buffer` of a session.
 
-	If the character is a backspace, the last character is removed
+	If the character is a [Backspace], the last character is removed.
 
-	If the character is a [Enter], the buffer is cleared and the new character is added
+	If the character is an [Enter], the buffer is cleared and the new character is added.
 
-	:param input_line_buffer: List of ASCII characters
-	:param ascii_char: The ASCII character to insert
+	:param input_line_buffer: List of ASCII characters codes
+	:param ascii_char: The ASCII character code to insert
 	:return: The updated buffer
 	"""
 	if input_line_buffer is None:
 		input_line_buffer = []
 
-	# Backspace
+	# [Backspace] characters
 	if ascii_char in (8, 127):
 		if len(input_line_buffer) > 0:
 			input_line_buffer.pop()
 
 		return input_line_buffer
 
-	# Enter characters: LF (`\n`) or CR (`\r`)
+	# [Enter] characters: LF (`\n`) or CR (`\r`) or CRLF (`\n\r`)
 	last_character = input_line_buffer[-1] if input_line_buffer else -1
 	if last_character != -1 and last_character in (10, 13):
 		return [ascii_char]
@@ -119,20 +116,33 @@ def add_char_to_input_line_buffer(input_line_buffer: list[int], ascii_char: int)
 
 
 def sanitize_input(data):
-	"""Checks that the data does not contain dangerous scripts"""
+	"""
+	Checks if the json data is a dictionary with string or int values.
+
+	:raises ValueError: If the input data is wrong
+	"""
 
 	if not isinstance(data, dict):
-		raise ValueError("Input data must be a dictionary")
+		raise ValueError("Input data must be a json")
 
 	sanitized_data = {}
 	for key, value in data.items():
 		if isinstance(value, (str, int)):
+			# Transform the value into a string and clean it
 			sanitized_data[key] = str(value).strip()
+		else:
+			raise ValueError("The fields of the json must be either strings or integers")
 
 	return sanitized_data
 
 
 def encrypt_credentials(credentials):
+	"""
+	Encrypts the hostname, the port, the username and the authentication provided in the credentials' dict.
+	Leaves the creation time intact.
+
+	:raises Exception: When no authorization method has been found in the dict
+	"""
 	hostname: str = credentials["hostname"]
 	port: int = credentials["port"]
 	username: str = credentials["username"]
@@ -152,11 +162,15 @@ def encrypt_credentials(credentials):
 		password: str = credentials["password"]
 		encrypted_credentials["password"] = cipher.encrypt(password.encode("utf-8"))
 	else:
-		raise ValueError("No ssh key or password found")
+		raise Exception("No SSH key or password found")
 
 	return encrypted_credentials
 
 def decrypt_credentials(encrypted_credentials):
+	"""
+	Decrypts the hostname, the port, the username and the authentication provided in the credentials' dict.
+	Leaves the creation time intact.
+	"""
 	hostname: bytes = encrypted_credentials["hostname"]
 	port: bytes = encrypted_credentials["port"]
 	username: bytes = encrypted_credentials["username"]
@@ -176,25 +190,34 @@ def decrypt_credentials(encrypted_credentials):
 		password: bytes = encrypted_credentials["password"]
 		decrypted_credentials["password"] = cipher.decrypt(password).decode()
 	else:
-		raise ValueError("No ssh key or password found")
+		raise ValueError("No SSH key or password found")
 
 	return decrypted_credentials
 
 
 def was_created_x_seconds_ago(past_time: datetime, seconds: int) -> bool:
+	"""
+	Checks if a time was a certain amount of seconds ago.
+	"""
 	now = datetime.now()
 	target_time = past_time + timedelta(seconds=seconds)
 	return now >= target_time
 
 def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seconds: int):
-	logging.info("Started the delete_old_unused_credentials task")
+
+	logging.info(f"started the task to delete unused credentials "
+				 f"with the max tolerance of {max_second_tolerance}s and an interval of {check_interval_seconds}s")
 
 	while True:
 		sleep(check_interval_seconds)
 
 		for key in list(CREDENTIAL_STORE.keys()):
 			if was_created_x_seconds_ago(CREDENTIAL_STORE[key]["creation_time"], max_second_tolerance):
-				if key in CREDENTIAL_STORE: # Check if the key is still in the credential store
-					del CREDENTIAL_STORE[key]
-					logging.info(f"Deleted unused create_session_id {key} and it's credentials because "
+				result = CREDENTIAL_STORE.pop(key, None)
+
+				if result is None:
+					logging.warning(f"the create_session_id {key} and it's credentials were to be deleted because "
+							 f"they were created more than {max_second_tolerance} seconds ago, but they were not found")
+				else:
+					logging.info(f"deleted unused create_session_id {key} and it's credentials because "
 								 f"they were created more than {max_second_tolerance} seconds ago")

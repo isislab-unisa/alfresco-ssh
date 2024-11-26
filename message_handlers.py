@@ -1,14 +1,13 @@
 import io
 import logging
-from pprint import pprint
-
 import paramiko
 
 from flask import request
 from flask_socketio import SocketIO, disconnect
+
 from message_senders import send_ssh_output
-from stores import CREDENTIAL_STORE, SSH_SESSION_STORE, CREDENTIAL_STORE_DATES
-from utils import decrypt_credentials, cipher, RED, RESET
+from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
+from utils import decrypt_credentials, RED, RESET
 
 
 def register_message_handlers(socketio: SocketIO):
@@ -31,15 +30,12 @@ def register_message_handlers(socketio: SocketIO):
 
 def close_connection(sid, socketio: SocketIO, create_session_id = None):
 	"""
-	Disconnects the  client terminal and closes the ssh session
+	Disconnects the client terminal and closes the ssh session.
 	"""
 	session = SSH_SESSION_STORE.pop(sid, None)
 
-	if (create_session_id
-			and create_session_id in CREDENTIAL_STORE
-			and create_session_id in CREDENTIAL_STORE_DATES):
+	if create_session_id is not None and create_session_id in CREDENTIAL_STORE:
 		CREDENTIAL_STORE.pop(create_session_id, None)
-		CREDENTIAL_STORE_DATES.pop(create_session_id, None)
 
 	if session:
 		session["channel"].close()
@@ -56,7 +52,7 @@ def close_connection(sid, socketio: SocketIO, create_session_id = None):
 
 def handle_start_session(data, socketio: SocketIO):
 	"""
-	Handles the connection of a new client terminal
+	Handles the connection of a new client terminal.
 
 	EVENT: `connect`
 	"""
@@ -72,7 +68,7 @@ def handle_start_session(data, socketio: SocketIO):
 	try:
 		encrypted_credentials = CREDENTIAL_STORE.pop(create_session_id, None)
 
-		if not encrypted_credentials:
+		if encrypted_credentials is None:
 			raise Exception(f"No credentials found for {create_session_id}")
 
 		logging.debug(f"credentials for {create_session_id} taken and removed")
@@ -143,7 +139,7 @@ def handle_start_session(data, socketio: SocketIO):
 
 def handle_ssh_input(data, socketio: SocketIO):
 	"""
-	Reads the input (one character) from the client terminal and sends it to the ssh terminal
+	Reads the input (one character) from the client terminal and sends it to the ssh terminal.
 
 	EVENT: `ssh-input`
 	"""
@@ -171,7 +167,7 @@ def handle_ssh_input(data, socketio: SocketIO):
 
 def handle_disconnect(socketio: SocketIO):
 	"""
-	Handles the `disconnect` event from the client terminal
+	Handles the `disconnect` event from the client terminal.
 
 	EVENT: `disconnect`
 	"""
@@ -181,7 +177,7 @@ def handle_disconnect(socketio: SocketIO):
 
 def handle_resize(data):
 	"""
-	Handles the resizing of the client terminal by adapting the dimensions of the ssh terminal
+	Handles the resizing of the client terminal by adapting the dimensions of the ssh terminal.
 
 	EVENT: `resize`
 	:param data: Has `cols` and `rows`
