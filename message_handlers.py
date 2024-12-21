@@ -95,13 +95,26 @@ def handle_start_session(data, socketio: SocketIO):
 				allow_agent=False,
 			)
 		elif "ssh_key" in credentials:
+
+			def load_private_key(key_str):
+				"""
+				Automatically identifies the type of ssh key.
+				"""
+				key_file = io.StringIO(key_str)
+				for key_class in (paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey, paramiko.Ed25519Key):
+					try:
+						return key_class.from_private_key(key_file)
+					except paramiko.SSHException:
+						key_file.seek(0)  # Reset the ssh key pointer position to try with another type
+				raise ValueError("Key format not valid (RSA, DSS, ECDSA, ED25519).")
+
+			private_key = load_private_key(credentials["ssh_key"])
 			# Connect with SSH Key
-			ssh_key = paramiko.RSAKey.from_private_key(io.StringIO(credentials["ssh_key"]))
 			ssh_client.connect(
 				hostname=hostname,
 				port=port,
 				username=username,
-				pkey=ssh_key,
+				pkey=private_key,
 				look_for_keys=False,
 				allow_agent=False,
 			)
