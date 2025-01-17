@@ -59,9 +59,12 @@ def handle_start_session(data, socketio: SocketIO):
 	sid = request.sid
 	create_session_id = data['create_session_id']
 
-	if create_session_id not in CREDENTIAL_STORE:
+	try:
+		CREDENTIAL_STORE.get_credentials(create_session_id)
+	except KeyError as e:
 		logging.error(f"Invalid create connection ID: {create_session_id}")
 		disconnect()
+
 
 	logging.info(f"new client connected (created with {create_session_id}): {sid}")
 

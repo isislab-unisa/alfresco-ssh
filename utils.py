@@ -136,6 +136,13 @@ def sanitize_input(data):
 	return sanitized_data
 
 
+def encrypt(data: str, encoding: str = "utf-8") -> bytes:
+	return cipher.encrypt(data.encode(encoding))
+
+def decrypt(data: bytes, encoding: str = "utf-8") -> str:
+	return cipher.decrypt(data).decode(encoding)
+
+
 def encrypt_credentials(credentials):
 	"""
 	Encrypts the hostname, the port, the username and the authentication provided in the credentials' dict.
