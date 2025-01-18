@@ -2,104 +2,109 @@ import logging
 import uuid
 from datetime import datetime
 
+from eventlet.green.http import HTTPStatus
 from flask import request, jsonify, render_template, Blueprint
-from utils import encrypt_credentials, sanitize_input
+from werkzeug.datastructures import FileStorage
+
+from utils import encrypt_credentials, sanitize_input, create_json_response
 from stores import CREDENTIAL_STORE, Credentials
 
 routes_blueprint = Blueprint('routes', __name__)
 
+def get_credentials_from_request(source: dict, form_files_source: dict = None) -> Credentials:
+	hostname: str | None = source.get("hostname", None)
+	username: str | None = source.get("username", None)
+	port: int = int(source.get("port", 22))
+	ssh_key: str | None = None
+	password: str | None = None
+
+	if form_files_source is not None:
+		ssh_key_file: FileStorage | None = form_files_source.get("ssh_key", None)
+
+		if ssh_key_file is None:
+			logging.warning("SSH key file missing in the request")
+			raise ValueError("No SSH key file provided")
+		else:
+			ssh_key = ssh_key_file.read().decode("utf-8")
+	else:
+		password = source.get("password", None)
+
+	return Credentials(
+		hostname=hostname,
+		port=port,
+		username=username,
+		ssh_key=ssh_key,
+		password=password,
+	)
+
+
 @routes_blueprint.route("/create-credentials", methods=["POST"])
-def create_session():
+def create_credentials():
 	"""Receives SSH credentials via POST request and returns a UUID."""
-	ssh_session_id = None
+	credentials_uuid: str | None = None
 	logging.info("Received a POST request for credentials creation")
 
 	try:
 		content_type = request.content_type
 		logging.debug(f"Request content type: {content_type}")
 
-		if content_type.startswith("multipart/form-data"):
+		if content_type.startswith("multipart/form-data"): # TODO: Maybe instead of a file, receive a string
 			logging.info("Processing SSH key authentication")
-
-			hostname = request.form["hostname"]
-			port = int(request.form.get("port", 22))
-			username = request.form["username"]
-
-			if "ssh_key" not in request.files:
-				logging.warning("SSH key file missing in the request")
-				raise ValueError("No SSH key file provided")
-
-			ssh_key_file = request.files["ssh_key"]  # TODO: Maybe instead of a file, receive a string
-			ssh_key_content: str = ssh_key_file.read().decode("utf-8")
-
-			# Generate a unique ID to use  (UUID)
-			ssh_session_id = str(uuid.uuid4())
-			logging.info(f"Generated new SSH session ID: {ssh_session_id}")
-
-			credentials = Credentials(
-				ssh_session_id,
-				hostname,
-				port,
-				username,
-				ssh_key=ssh_key_content,
-			)
-			CREDENTIAL_STORE.add_credentials(credentials)
-
-			logging.debug(f"credentials for {ssh_session_id} encrypted and stored")
-
-		elif request.content_type == "application/json":
-			# Password authentication
+			new_credentials = get_credentials_from_request(request.form, request.files)
+			CREDENTIAL_STORE.add_credentials(new_credentials)
+		elif content_type == "application/json":
+			logging.info("Processing password authentication")
 			data = sanitize_input(request.json)
-			hostname = data["hostname"]
-			port = int(data.get("port", 22))
-			username = data["username"]
-			password = data["password"]
-
-			# Generate a unique session ID (UUID)
-			ssh_session_id = str(uuid.uuid4())
-			logging.info(f"generated a new create_session_id: {ssh_session_id}")
-
-			credentials = Credentials(
-				ssh_session_id,
-				hostname,
-				port,
-				username,
-				password=password,
-			)
-			CREDENTIAL_STORE.add_credentials(credentials)
-
-			logging.debug(f"credentials for {ssh_session_id} encrypted and stored")
-
+			new_credentials = get_credentials_from_request(data)
+			CREDENTIAL_STORE.add_credentials(new_credentials)
 		else:
-			return jsonify({"error": "Unsupported content type"}), 400
-
-		url = f"{request.scheme}://{request.host}/{ssh_session_id}"
-		logging.debug(url)
-
-		return jsonify({
-			"create_session_id": ssh_session_id,
-			"url": url
-		}), 200
-
-
+			return create_json_response(
+				error=True,
+				error_message="Unsupported content type",
+				status_code=HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+			)
 	except KeyError as e:
-		logging.error(f"Error for {ssh_session_id}: {e}")
-		return jsonify({"error": "Missing field"}), 400
+		logging.warning(f"Error for {credentials_uuid}: {e}")
+		return create_json_response(
+			error=True,
+			error_message="Missing fields",
+			status_code=HTTPStatus.BAD_REQUEST
+		)
 	except ValueError as e:
-		logging.error(f"Error for {ssh_session_id}: {e}")
-		return jsonify({"error": str(e)}), 400
+		logging.warning(f"Error for {credentials_uuid}: {e}")
+		return create_json_response(
+			error=True,
+			error_message=str(e),
+			status_code=HTTPStatus.BAD_REQUEST
+		)
 	except Exception as e:
-		logging.error(f"Error for {ssh_session_id}: {e}")
-		return jsonify({"error": "Internal server error"}), 500
+		logging.error(f"Internal Server Error for {credentials_uuid}: {e}")
+		return create_json_response(
+			error=True,
+			error_message="Internal server error",
+			status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+		)
+
+	logging.debug(f"Credentials for {credentials_uuid} encrypted and stored")
+
+	return create_json_response(
+		json={"credentials_uuid": credentials_uuid},
+		status_code=HTTPStatus.OK
+	)
 
 
-@routes_blueprint.route("/<create_session_id>")
-def terminal(create_session_id):
-	try:
-		CREDENTIAL_STORE.get_credentials(create_session_id)
-	except KeyError as e:
-		logging.error(f"Error for {create_session_id}: {e}")
-		return str(e), 404
+@routes_blueprint.route("/<credentials_uuid>")
+def terminal(credentials_uuid):
+	credentials = CREDENTIAL_STORE.get_credentials(credentials_uuid)
 
-	logging.info(f"requested a terminal with {create_session_id}")
-	return render_template("index.html", create_session_id=create_session_id)
+	if credentials is None:
+		logging.warning(f"Could not find credentials for {credentials_uuid}")
+		return create_json_response(
+			error=True,
+			error_message=f"Could not find credentials for {credentials_uuid}",
+			status_code=HTTPStatus.NOT_FOUND
+		)
+
+	logging.info(f"Requested a terminal with {credentials_uuid}")
+	return render_template("index.html", credentials_uuid=credentials_uuid)
+

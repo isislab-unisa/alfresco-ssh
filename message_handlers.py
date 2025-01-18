@@ -11,6 +11,8 @@ from utils import decrypt_credentials, RED, RESET
 
 
 def register_message_handlers(socketio: SocketIO):
+	"""Used to make the message handlers known to flask."""
+
 	@socketio.on("start-session", namespace="/ssh")
 	def handle_start_session_wrapper(data):
 		handle_start_session(data, socketio)
@@ -28,56 +30,34 @@ def register_message_handlers(socketio: SocketIO):
 		handle_resize(data)
 
 
-def close_connection(sid, socketio: SocketIO, create_session_id = None):
-	"""
-	Disconnects the client terminal and closes the ssh session.
-	"""
-	session = SSH_SESSION_STORE.pop(sid, None)
-
-	if create_session_id is not None and create_session_id in CREDENTIAL_STORE:
-		CREDENTIAL_STORE.pop(create_session_id, None)
-
-	if session:
-		session["channel"].close()
-		session["client"].close()
-
-		logging.info(f"ssh session closed for {sid}")
-
-		# Notify the client terminal to close the connection
-		socketio.emit("ssh-output", {"output": f"{RED}The session was terminated{RESET}"}, namespace="/ssh", to=sid)
-		socketio.emit("disconnect", namespace="/ssh", to=sid)
-	else:
-		logging.warning(f"could not close the connection {sid}, as no ssh session was found (or it was already closed)")
-
-
 def handle_start_session(data, socketio: SocketIO):
 	"""
 	Handles the connection of a new client terminal.
 
 	EVENT: `connect`
 	"""
-	sid = request.sid
-	create_session_id = data['create_session_id']
+	flask_sid = request.sid
+	credentials_uuid = data['credentials_uuid']
 
 	try:
-		CREDENTIAL_STORE.get_credentials(create_session_id)
+		CREDENTIAL_STORE.get_credentials(credentials_uuid)
 	except KeyError as e:
-		logging.error(f"Invalid create connection ID: {create_session_id}")
+		logging.error(f"Invalid create connection ID: {credentials_uuid}")
 		disconnect()
 
 
-	logging.info(f"new client connected (created with {create_session_id}): {sid}")
+	logging.info(f"new client connected (created with {credentials_uuid}): {flask_sid}")
 
 	try:
-		encrypted_credentials = CREDENTIAL_STORE.pop(create_session_id, None)
+		encrypted_credentials = CREDENTIAL_STORE.pop(credentials_uuid, None)
 
 		if encrypted_credentials is None:
-			raise Exception(f"No credentials found for {create_session_id}")
+			raise Exception(f"No credentials found for {credentials_uuid}")
 
-		logging.debug(f"credentials for {create_session_id} taken and removed")
+		logging.debug(f"credentials for {credentials_uuid} taken and removed")
 
 		credentials = decrypt_credentials(encrypted_credentials)
-		logging.debug(f"credentials for {sid} decrypted with {create_session_id}")
+		logging.debug(f"credentials for {flask_sid} decrypted with {credentials_uuid}")
 
 		hostname = credentials["hostname"]
 		port = credentials["port"]
@@ -128,7 +108,7 @@ def handle_start_session(data, socketio: SocketIO):
 		ssh_channel = ssh_client.invoke_shell()
 		ssh_channel.settimeout(0.0)
 
-		SSH_SESSION_STORE[sid] = {
+		SSH_SESSION_STORE[flask_sid] = {
 			"client": ssh_client,
 			"channel": ssh_channel,
 			# "input_line_buffer": []
@@ -139,18 +119,18 @@ def handle_start_session(data, socketio: SocketIO):
 		# If they come before, the background task never starts
 		socketio.start_background_task(
 			target=send_ssh_output,
-			sid=sid,
+			sid=flask_sid,
 			socketio=socketio
 		)
 
 		if "password" in credentials:
-			logging.info(f"ssh session established for {sid} with password")
+			logging.info(f"ssh session established for {flask_sid} with password")
 		else:
-			logging.info(f"ssh session established for {sid} with key")
+			logging.info(f"ssh session established for {flask_sid} with key")
 	except Exception as e:
-		logging.error(f"ssh connection failed for {sid}: {e}")
-		socketio.emit("ssh-output", {"output": f"{RED}{e}{RESET}"}, namespace="/ssh", to=sid)
-		close_connection(sid, socketio)
+		logging.error(f"ssh connection failed for {flask_sid}: {e}")
+		socketio.emit("ssh-output", {"output": f"{RED}{e}{RESET}"}, namespace="/ssh", to=flask_sid)
+		close_connection(flask_sid, socketio)
 
 
 def handle_ssh_input(data, socketio: SocketIO):
@@ -204,3 +184,25 @@ def handle_resize(data):
 	if ssh_channel:
 		logging.debug(f"resizing terminal {sid} window to cols={data['cols']}, rows={data['rows']}")
 		ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
+
+
+def close_connection(sid, socketio: SocketIO, create_session_id = None):
+	"""
+	Disconnects the client terminal and closes the ssh session.
+	"""
+	session = SSH_SESSION_STORE.pop(sid, None)
+
+	if create_session_id is not None and create_session_id in CREDENTIAL_STORE:
+		CREDENTIAL_STORE.pop(create_session_id, None)
+
+	if session:
+		session["channel"].close()
+		session["client"].close()
+
+		logging.info(f"ssh session closed for {sid}")
+
+		# Notify the client terminal to close the connection
+		socketio.emit("ssh-output", {"output": f"{RED}The session was terminated{RESET}"}, namespace="/ssh", to=sid)
+		socketio.emit("disconnect", namespace="/ssh", to=sid)
+	else:
+		logging.warning(f"could not close the connection {sid}, as no ssh session was found (or it was already closed)")

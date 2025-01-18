@@ -96,14 +96,14 @@
     /**
      * The UUID that will be used to start a new session
      */
-    const create_session_id = "{{ create_session_id }}";
+    const credentials_uuid = "{{ credentials_uuid }}";
 
     /**
      * Fit the terminal to the screen when the connection is established
      * @event `connect`
      */
     socket.on("connect", () => {
-        socket.emit("start-session", {create_session_id: create_session_id});
+        socket.emit("start-session", {credentials_uuid: credentials_uuid});
         console.log("Connected");
         fitToScreen();
     });

@@ -2,9 +2,11 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from time import sleep
 
 from cryptography.fernet import Fernet
+from flask import jsonify
 
 from stores import CREDENTIAL_STORE
 
@@ -228,3 +230,16 @@ def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seco
 				else:
 					logging.info(f"deleted unused create_session_id {key} and it's credentials because "
 								 f"they were created more than {max_second_tolerance} seconds ago")
+
+
+def create_json_response(json: dict = None, status_code: HTTPStatus = HTTPStatus.OK, error: bool = False, error_message: str = ""):
+	to_send = json if json is not None else {}
+
+	to_send["success"] = False if error else True
+
+	if error:
+		to_send["error"] = error_message
+
+	return jsonify(to_send), status_code.value
+
+

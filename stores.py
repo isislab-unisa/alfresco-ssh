@@ -1,40 +1,58 @@
+import uuid
 from datetime import datetime
+from typing import Literal
+
+from paramiko.channel import Channel
+from paramiko.client import SSHClient
+
 from utils import encrypt, decrypt
 
 
 class Credentials:
-	def __init__(self, create_session_id: str,
-				 hostname: str, port: int, username: str,
+	def __init__(self,
+				 hostname: str, username: str, port: int = 22,
 				 ssh_key: str = None, password: str = None):
 		"""An object representing the credentials for an SSH connection."""
 		if (ssh_key is not None and password is not None) or (ssh_key is None and password is None):
 			raise ValueError("You must provide exactly one of ssh_key or password")
 
-		self.create_session_id = create_session_id
-		self.creation_time = datetime.now()
+		if hostname is None:
+			raise ValueError("You must provide a hostname")
+
+		if username is None:
+			raise ValueError("You must provide a username")
+
+		self.uuid = str(uuid.uuid4())
 
 		self.hostname = encrypt(hostname)
 		self.port = encrypt(str(port))
 		self.username = encrypt(username)
-
 		self.ssh_key = encrypt(ssh_key) if ssh_key else None
 		self.password = encrypt(password) if password else None
 
-	def decrypt_hostname(self):
+		self.creation_time = datetime.now()
+
+	def get_authentication_method_type(self) -> Literal["ssh_key", "password"]:
+		if self.ssh_key is None:
+			return "password"
+		else:
+			return "ssh_key"
+
+	def decrypt_hostname(self) -> str:
 		return decrypt(self.hostname)
 
-	def decrypt_port(self):
+	def decrypt_port(self) -> str:
 		return decrypt(self.port)
 
-	def decrypt_username(self):
+	def decrypt_username(self) -> str:
 		return decrypt(self.username)
 
-	def decrypt_ssh_key(self):
+	def decrypt_ssh_key(self) -> str | None:
 		if self.ssh_key is None:
 			return None
 		return decrypt(self.ssh_key)
 
-	def decrypt_password(self):
+	def decrypt_password(self) -> str | None:
 		if self.password is None:
 			return None
 		return decrypt(self.password)
@@ -42,36 +60,69 @@ class Credentials:
 
 class CredentialStore:
 	def __init__(self):
-		self.credentials_store = {}
+		self.store = {}
 
 	def add_credentials(self, credentials: Credentials):
-		if credentials.create_session_id in self.credentials_store:
-			raise ValueError(f"Credentials with session ID {credentials.create_session_id} already exist.")
+		uuid = credentials.uuid
 
-		self.credentials_store[credentials.create_session_id] = credentials
+		if uuid in self.store:
+			raise ValueError(f"Could not add credentials with {uuid} because they already exists.")
 
-	def get_credentials(self, create_session_id: str) -> Credentials:
-		credentials = self.credentials_store.get(create_session_id)
+		self.store[uuid] = credentials
 
-		if not credentials:
-			raise KeyError(f"Credentials with session ID {create_session_id} not found.")
+	def get_credentials(self, credentials_uuid: str) -> Credentials | None:
+		return self.store.get(credentials_uuid, None)
 
-		return credentials
-
-	def remove_credentials(self, create_session_id: str):
-		if create_session_id in self.credentials_store:
-			del self.credentials_store[create_session_id]
-		else:
-			raise KeyError(f"Credentials with session ID {create_session_id} not found.")
+	def remove_credentials(self, credentials_uuid: str) -> Credentials | None:
+		return self.store.pop(credentials_uuid, None)
 
 	def list_credentials(self):
-		return list(self.credentials_store.keys())
-
+		return list(self.store.keys())
 
 
 # Dictionary to keep the SSH credentials for each created session
 CREDENTIAL_STORE = CredentialStore()
 
+
+class SSHSession:
+	def __init__(self, flask_request_sid, client: SSHClient, channel: Channel, credentials: Credentials):
+		self.flask_request_sid = flask_request_sid
+
+		self.client = client
+		self.channel = channel
+		self.credentials = credentials
+
+		self.last_active = datetime.now()
+		self.input_line_buffer = []
+
+	def update_last_active(self):
+		self.last_active = datetime.now()
+
+
+
+
+class SSHSessionStore:
+	def __init__(self):
+		self.store = {}
+
+	def add_session(self, session: SSHSession):
+		flask_sid = session.flask_request_sid
+
+		if flask_sid in self.store:
+			raise ValueError(f"Could not add ssh session with {flask_sid} because it already exists.")
+
+		self.store[flask_sid] = session
+
+	def get_session(self, flask_request_sid):
+		return self.store.get(flask_request_sid, None)
+
+	def remove_session(self, flask_request_sid):
+		return self.store.pop(flask_request_sid, None)
+
+	def list_sessions(self):
+		return list(self.store.keys())
+
+
 # Dictionary to keep the SSH session for each connected user
 # TODO: Find a way to limit the number of sessions
-SSH_SESSION_STORE = {}
+SSH_SESSION_STORE = SSHSessionStore()

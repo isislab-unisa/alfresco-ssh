@@ -13,7 +13,7 @@ from threading import Thread
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 app = Flask(
 	__name__,
@@ -58,16 +58,17 @@ def main():
 	#         SETUP LOGGER         #
 	################################
 
-	log_format = f"{GREEN}alfresco-ssh > {RESET}%(levelname)s (%(funcName)s:%(lineno)s) %(message)s"
+	log_format = f"{GREEN}alfresco-ssh > {RESET}%(levelname)s %(message)s"
+	log_format_debug = f"{GREEN}alfresco-ssh > {RESET}%(levelname)s (%(funcName)s:%(lineno)s) %(message)s"
 
 	logging.basicConfig(
-		format=log_format,
+		format=log_format_debug if args.debug else log_format,
 		stream=sys.stdout,
 		level=logging.DEBUG if args.debug else logging.INFO,
 	)
 
 	if args.host == "0.0.0.0":
-		local_network_ip = socket.gethostbyname(socket.gethostname())
+		local_network_ip = socket.gethostbyname(socket.gethostname()) # TODO: Fix this ip, it is not correct
 		logging.info(f"serving on local network http://{local_network_ip}:{args.port}")
 	else:
 		logging.info(f"serving on http://{args.host}:{args.port}")
@@ -76,7 +77,7 @@ def main():
 	#    START SOCKET.IO SERVER    #
 	################################
 
-
+	# TODO: Fix this
 	credential_clean_up_thread = Thread(
 		target=delete_old_unused_credentials,
 		kwargs={
