@@ -1,11 +1,9 @@
-import uuid
-from datetime import datetime
-
-from utils import encrypt, decrypt
+import os
+from cryptography.fernet import Fernet
 
 
 class Credentials:
-	def __init__(self,
+	def __init__(self, credentials_uuid: str,
 				 hostname: str, username: str, port: int = 22,
 				 ssh_key: str = None, password: str = None):
 		"""
@@ -25,7 +23,7 @@ class Credentials:
 		if username is None:
 			raise ValueError("You must provide a username")
 
-		self.uuid = str(uuid.uuid4())
+		self.uuid = credentials_uuid
 
 		self.hostname = encrypt(hostname)
 		self.port = encrypt(str(port))
@@ -41,8 +39,6 @@ class Credentials:
 		else:
 			self.password = encrypt(password)
 			self.authentication_type = "password"
-
-		self.creation_time = datetime.now()
 
 	def decrypt_hostname(self) -> str:
 		return decrypt(self.hostname)
@@ -77,7 +73,7 @@ class CredentialStore:
 		credentials_uuid = credentials.uuid
 
 		if credentials_uuid in self.store:
-			raise ValueError(f"Could not add credentials with {credentials_uuid} because it already exists.")
+			raise ValueError(f"[cred.uuid={credentials_uuid}] Could not add credentials with {credentials_uuid} because it already exists in the store.")
 
 		self.store[credentials_uuid] = credentials
 		return self.store[credentials_uuid]
@@ -93,3 +89,17 @@ class CredentialStore:
 	def list_credentials(self):
 		"""Returns a list of all credentials' keys."""
 		return list(self.store.keys())
+
+
+CREDENTIALS_KEY = os.getenv("CREDENTIALS_KEY", Fernet.generate_key())
+cipher = Fernet(CREDENTIALS_KEY)
+
+
+def encrypt(data: str, encoding: str = "utf-8") -> bytes:
+	"""Encrypts the given string using the given encoding."""
+	return cipher.encrypt(data.encode(encoding))
+
+
+def decrypt(data: bytes, encoding: str = "utf-8") -> str:
+	"""Decrypts the given string using the given encoding."""
+	return cipher.decrypt(data).decode(encoding)

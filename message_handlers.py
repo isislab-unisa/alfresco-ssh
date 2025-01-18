@@ -26,6 +26,10 @@ def register_message_handlers(socketio: SocketIO):
 	def handle_disconnect_wrapper():
 		handle_disconnect(socketio)
 
+	@socketio.on("timeout", namespace="/ssh")
+	def handle_timeout_wrapper():
+		handle_timeout(socketio)
+
 	@socketio.on("resize", namespace="/ssh")
 	def handle_resize_wrapper(data):
 		handle_resize(data)
@@ -43,17 +47,18 @@ def handle_start_session(data, socketio: SocketIO):
 	credentials = CREDENTIAL_STORE.get_credentials(credentials_uuid)
 
 	if credentials is None:
-		logging.error(f"No credentials found for {credentials_uuid}")
+		logging.warning(f"[flask_sid={flask_sid}] No credentials found with credentials_uuid {credentials_uuid}")
+		close_connection(flask_sid, socketio)
 		disconnect()
 		return
 
 
-	logging.info(f"New client connected (created with {credentials_uuid}): {flask_sid}")
+	logging.info(f"[flask_sid={flask_sid}] New client connected with credentials_uuid {credentials_uuid}")
 
 	try:
 		CREDENTIAL_STORE.remove_credentials(credentials_uuid)
 
-		logging.debug(f"Credentials with ID {credentials_uuid} removed")
+		logging.debug(f"[flask_sid={flask_sid}] Credentials with credentials_uuid {credentials_uuid} removed from credentials store")
 
 		hostname = credentials.decrypt_hostname()
 		port = credentials.decrypt_port()
@@ -65,6 +70,7 @@ def handle_start_session(data, socketio: SocketIO):
 
 		if credentials.authentication_type == "password":
 			# Connect with password
+			logging.info(f"[flask_sid={flask_sid}] Connecting to SSH server with password...")
 			ssh_client.connect(
 				hostname=hostname,
 				port=port,
@@ -92,6 +98,7 @@ def handle_start_session(data, socketio: SocketIO):
 			private_key = load_private_key(private_key_file)
 
 			# Connect with SSH Key
+			logging.info(f"[flask_sid={flask_sid}] Connecting to SSH server with SSH Key...")
 			ssh_client.connect(
 				hostname=hostname,
 				port=port,
@@ -126,12 +133,12 @@ def handle_start_session(data, socketio: SocketIO):
 		)
 
 		if credentials.authentication_type == "password":
-			logging.info(f"SSH session established for {flask_sid} with password")
+			logging.info(f"[flask_sid={flask_sid}] SSH session successfully established with password")
 		else:
-			logging.info(f"SSH session established for {flask_sid} with key")
+			logging.info(f"[flask_sid={flask_sid}] SSH session successfully established with SSH key")
 	except Exception as e:
-		logging.error(f"SSH connection failed for {flask_sid}: {e}")
-		socketio.emit("ssh-output", {"output": f"{RED}{e}{RESET}"}, namespace="/ssh", to=flask_sid)
+		logging.warning(f"[flask_sid={flask_sid}] Failed to establish an SSH connection: {e}")
+		socketio.emit("ssh-output", {"output": f"{RED}Failed to establish an SSH connection: {e}{RESET}"}, namespace="/ssh", to=flask_sid)
 		close_connection(flask_sid, socketio)
 
 
@@ -143,26 +150,26 @@ def handle_ssh_input(data, socketio: SocketIO):
 	"""
 	flask_sid = request.sid
 	ssh_session = SSH_SESSION_STORE.get_session(flask_sid)
-	ssh_channel = ssh_session.channel
 
-	if ssh_channel is not None and ssh_channel.send_ready():
-		if len(data["input"]) == 1:
-			logging.debug(f"Received input from client terminal {flask_sid}: {data['input']} ({ord(data['input'])})")
+	if ssh_session is not None:
+		ssh_channel = ssh_session.channel
+		if ssh_channel is not None and ssh_channel.send_ready():
+			if len(data["input"]) == 1:
+				logging.debug(f"[flask_sid={flask_sid}] Received input from client terminal: {data['input']} ({ord(data['input'])})")
 
-		# Put the character in the input line buffer
-		#buffer: list[int] = ssh_session.input_line_buffer
-		#ssh_session.input_line_buffer = add_char_to_input_line_buffer(buffer, ord(data["input"]))
-		#logging.debug(f"input buffer for {flask_sid}: {ssh_session.input_line_buffer}")
+			# Put the character in the input line buffer
+			#buffer: list[int] = ssh_session.input_line_buffer
+			#ssh_session.input_line_buffer = add_char_to_input_line_buffer(buffer, ord(data["input"]))
+			#logging.debug(f"input buffer for {flask_sid}: {ssh_session.input_line_buffer}")
 
-		else:
-			logging.debug(f"Received input from client terminal {flask_sid}: {data['input']} (special key)")
+			else:
+				logging.debug(f"[flask_sid={flask_sid}] Received input from client terminal: {data['input']} (special key)")
 
-		try:
-			ssh_channel.send(data["input"])
-			ssh_session.update_last_active()
-		except OSError:
-			logging.debug(f"Tried to send data to a closed socket for {flask_sid}")
-			close_connection(flask_sid, socketio)
+			try:
+				ssh_channel.send(data["input"])
+			except OSError:
+				logging.debug(f"[flask_sid={flask_sid}] Tried to send data to a closed socket")
+				close_connection(flask_sid, socketio)
 
 def handle_disconnect(socketio: SocketIO):
 	"""
@@ -171,6 +178,26 @@ def handle_disconnect(socketio: SocketIO):
 	EVENT: `disconnect`
 	"""
 	flask_sid = request.sid
+	logging.info(f"[flask_sid={flask_sid}] Received disconnect event from client terminal, closing SSH session and socket connection...")
+
+	close_connection(flask_sid, socketio)
+
+
+def handle_timeout(socketio: SocketIO):
+	"""
+	Handles the `timeout` event from the client terminal.
+
+	EVENT: `timeout`
+	"""
+	flask_sid = request.sid
+	logging.info(f"[flask_sid={flask_sid}] Received timeout event from client terminal, closing SSH session and socket connection...")
+
+	socketio.emit(
+		"ssh-output",
+		{"output": f"{RED}Timed-out, this session was unused for too long. {RESET}", "timeout": True},
+		namespace="/ssh",
+		to=flask_sid
+	)
 	close_connection(flask_sid, socketio)
 
 
@@ -183,11 +210,13 @@ def handle_resize(data):
 	"""
 	flask_sid = request.sid
 	ssh_session = SSH_SESSION_STORE.get_session(flask_sid)
-	ssh_channel = ssh_session.channel
 
-	if ssh_channel is not None:
-		logging.debug(f"Resizing terminal {flask_sid} window to cols={data['cols']}, rows={data['rows']}")
-		ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
+	if ssh_session is not None:
+		ssh_channel = ssh_session.channel
+		if ssh_channel is not None:
+			logging.debug(f"[flask_sid={flask_sid}] Resizing terminal window to cols={data['cols']}, rows={data['rows']}")
+			ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
+
 
 
 def close_connection(flask_sid, socketio: SocketIO):
@@ -197,13 +226,18 @@ def close_connection(flask_sid, socketio: SocketIO):
 	session = SSH_SESSION_STORE.remove_session(flask_sid)
 
 	if session is not None:
+		logging.info(f"[flask_sid={flask_sid}] Removed SSH session from session store")
+
 		session.client.close()
 		session.channel.close()
 
-		logging.info(f"SSH session closed for {flask_sid}")
+		logging.info(f"[flask_sid={flask_sid}] SSH session closed")
 
 		# Notify the client terminal to close the connection
-		socketio.emit("ssh-output", {"output": f"{RED}The session was terminated{RESET}"}, namespace="/ssh", to=flask_sid)
+		socketio.emit("ssh-output", {"output": f"{RED}The session was closed{RESET}"}, namespace="/ssh", to=flask_sid)
 		socketio.emit("disconnect", namespace="/ssh", to=flask_sid)
+		disconnect()
+		logging.info(f"[flask_sid={flask_sid}] Socket connection closed")
 	else:
-		logging.warning(f"Could not close the connection {flask_sid}, as no SSH session was found (or it was already closed)")
+		logging.warning(f"[flask_sid={flask_sid}] Could not close the SSH connection because it was not found in the session store (it could have been already closed)")
+

@@ -11,7 +11,7 @@ def send_ssh_output(flask_sid, socketio: SocketIO):
 	EVENT: `ssh-output`
 	"""
 	max_read_bytes = 1024 * 20
-	ssh_session = SSH_SESSION_STORE.get_session()
+	ssh_session = SSH_SESSION_STORE.get_session(flask_sid)
 	ssh_channel = ssh_session.channel
 
 	while True:
@@ -20,9 +20,7 @@ def send_ssh_output(flask_sid, socketio: SocketIO):
 		if ssh_channel is not None and ssh_channel.recv_ready():
 			output = ssh_channel.recv(max_read_bytes).decode(errors="ignore")
 
-			logging.debug(f"Output for {flask_sid}: {output}")
-
-			ssh_session.update_last_active()
+			logging.debug(f"[flask_sid={flask_sid}] Received an output from SSH server: {output}")
 
 			# Use the input line buffer here
 			#buffer = SSH_SESSION_STORE.get_session(flask_sid).input_line_buffer
