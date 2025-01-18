@@ -5,7 +5,8 @@ from flask import request, render_template, Blueprint
 from werkzeug.datastructures import FileStorage
 
 from utils import sanitize_input, create_json_response
-from stores import CREDENTIAL_STORE, Credentials
+from stores import CREDENTIAL_STORE
+from models.credentials import Credentials
 
 routes_blueprint = Blueprint('routes', __name__)
 

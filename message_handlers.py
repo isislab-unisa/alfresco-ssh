@@ -6,7 +6,8 @@ from flask import request
 from flask_socketio import SocketIO, disconnect
 
 from message_senders import send_ssh_output
-from stores import CREDENTIAL_STORE, SSH_SESSION_STORE, SSHSession
+from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
+from models.ssh_session import SSHSession
 from utils import RED, RESET
 
 
