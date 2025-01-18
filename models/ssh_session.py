@@ -45,14 +45,24 @@ class SSHSessionStore:
 
 		self.store[flask_sid] = session
 
-	def get_session(self, flask_request_sid) -> SSHSession:
+	def get_session(self, flask_request_sid) -> SSHSession | None:
 		"""Returns the active SSH session for the given flask session id. If not found, returns None."""
 		return self.store.get(flask_request_sid, None)
 
-	def remove_session(self, flask_request_sid) -> SSHSession:
+	def remove_session(self, flask_request_sid) -> SSHSession | None:
 		"""Deletes the active SSH session for the given flask session id."""
 		return self.store.pop(flask_request_sid, None)
 
 	def list_sessions(self):
 		"""Lists the active SSH sessions' keys."""
 		return list(self.store.keys())
+
+	def list_last_active_sessions(self):
+		"""
+		Lists active SSH sessions with the last time they were active.
+		:return: A dictionary where keys are session IDs and values are the last active timestamps.
+		"""
+		return {flask_sid: session.last_active for flask_sid, session in self.store.items()}
+
+
+

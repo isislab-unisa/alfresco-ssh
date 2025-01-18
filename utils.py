@@ -3,11 +3,12 @@ import os
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from time import sleep
-
 from cryptography.fernet import Fernet
 from flask import jsonify
+from flask_socketio import SocketIO
 
-from stores import CREDENTIAL_STORE
+from message_handlers import close_connection
+from stores import SSH_SESSION_STORE
 
 # Colors
 GREEN = "\033[92m"
@@ -61,7 +62,7 @@ def decrypt(data: bytes, encoding: str = "utf-8") -> str:
 	return cipher.decrypt(data).decode(encoding)
 
 
-def was_created_x_seconds_ago(past_time: datetime, seconds: int) -> bool:
+def is_time_older_than(past_time: datetime, seconds: int) -> bool:
 	"""
 	Checks if a time was a certain amount of seconds ago.
 	"""
@@ -69,21 +70,16 @@ def was_created_x_seconds_ago(past_time: datetime, seconds: int) -> bool:
 	target_time = past_time + timedelta(seconds=seconds)
 	return now >= target_time
 
-def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seconds: int):
 
-	logging.info(f"started the task to delete unused credentials "
+def delete_old_unused_credentials(max_second_tolerance: int, check_interval_seconds: int, socketio: SocketIO):
+	logging.info(f"Started the task to delete unused ssh sessions "
 				 f"with the max tolerance of {max_second_tolerance}s and an interval of {check_interval_seconds}s")
 
 	while True:
 		sleep(check_interval_seconds)
+		active_sessions = SSH_SESSION_STORE.list_last_active_sessions()
 
-		for key in list(CREDENTIAL_STORE.keys()):
-			if was_created_x_seconds_ago(CREDENTIAL_STORE[key]["creation_time"], max_second_tolerance):
-				result = CREDENTIAL_STORE.pop(key, None)
-
-				if result is None:
-					logging.warning(f"the create_session_id {key} and it's credentials were to be deleted because "
-							 f"they were created more than {max_second_tolerance} seconds ago, but they were not found")
-				else:
-					logging.info(f"deleted unused create_session_id {key} and it's credentials because "
-								 f"they were created more than {max_second_tolerance} seconds ago")
+		for flask_sid, last_active in active_sessions.items():
+			if is_time_older_than(last_active, max_second_tolerance):
+				close_connection(flask_sid, socketio)
+				logging.info(f"Removed SSH connection {flask_sid}")

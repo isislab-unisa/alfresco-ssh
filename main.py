@@ -77,12 +77,12 @@ def main():
 	#    START SOCKET.IO SERVER    #
 	################################
 
-	# TODO: Fix this
 	credential_clean_up_thread = Thread(
 		target=delete_old_unused_credentials,
 		kwargs={
 			"max_second_tolerance": 10,
-			"check_interval_seconds": 1
+			"check_interval_seconds": 1,
+			"socketio": socketio
 		}
 	)
 	credential_clean_up_thread.start()

@@ -190,18 +190,15 @@ def handle_resize(data):
 		ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
 
 
-def close_connection(flask_sid, socketio: SocketIO, create_session_id = None):
+def close_connection(flask_sid, socketio: SocketIO):
 	"""
-	Disconnects the client terminal and closes the ssh session.
+	Disconnects the client terminal and closes the SSH session.
 	"""
 	session = SSH_SESSION_STORE.remove_session(flask_sid)
 
-	if create_session_id is not None:
-		CREDENTIAL_STORE.remove_credentials(create_session_id)
-
 	if session is not None:
-		session.channel.close()
 		session.client.close()
+		session.channel.close()
 
 		logging.info(f"SSH session closed for {flask_sid}")
 
@@ -209,4 +206,4 @@ def close_connection(flask_sid, socketio: SocketIO, create_session_id = None):
 		socketio.emit("ssh-output", {"output": f"{RED}The session was terminated{RESET}"}, namespace="/ssh", to=flask_sid)
 		socketio.emit("disconnect", namespace="/ssh", to=flask_sid)
 	else:
-		logging.warning(f"Could not close the connection {flask_sid}, as no ssh session was found (or it was already closed)")
+		logging.warning(f"Could not close the connection {flask_sid}, as no SSH session was found (or it was already closed)")
