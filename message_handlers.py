@@ -223,7 +223,7 @@ def close_connection(flask_sid, socketio: SocketIO):
 	"""
 	Disconnects the client terminal and closes the SSH session.
 	"""
-	session = SSH_SESSION_STORE.remove_session(flask_sid)
+	session = SSH_SESSION_STORE.remove_and_close_session(flask_sid)
 
 	if session is not None:
 		logging.info(f"[flask_sid={flask_sid}] Removed SSH session from session store")

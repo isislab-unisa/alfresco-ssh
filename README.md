@@ -159,3 +159,66 @@ sequenceDiagram
 
 The `input` is usually one character long. 
 The only exceptions are some special keyboard keys (like the arrow keys).
+
+
+---
+## Diagrams
+### Models
+#### Credentials
+```mermaid
+classDiagram
+class Credentials {
+    +uuid: str
+    +hostname: bytes
+    +port: bytes
+    +username: bytes
+    +authentication_type: str
+    +ssh_key: bytes
+    +password: bytes
+    +decrypt_hostname(): str
+    +decrypt_port(): str
+    +decrypt_username(): str
+    +decrypt_ssh_key(): str | None
+    +decrypt_password(): str | None
+}
+
+class CredentialStore {
+    -store: dict
+    -lock: threading.Lock
+    +add_credentials(credentials: Credentials): Credentials
+    +get_credentials(credentials_uuid: str): Credentials | None
+    +remove_credentials(credentials_uuid: str): Credentials | None
+    +list_credentials(): list
+}
+
+class Encryption {
+    +encrypt(data: str, encoding: str = "utf-8"): bytes
+    +decrypt(data: bytes, encoding: str = "utf-8"): str
+}
+
+Encryption <.. Credentials
+CredentialStore "1" *-- "many" Credentials : manages
+```
+
+#### SSH Sessions
+```mermaid
+classDiagram
+class SSHSession {
+    -flask_request_sid: str
+    -client: SSHClient
+    -channel: Channel
+    +close(): void
+}
+
+class SSHSessionStore {
+    -store: dict
+    -lock: threading.Lock
+    +add_session(session: SSHSession): SSHSession
+    +get_session(flask_request_sid: str): SSHSession | None
+    +remove_session(flask_request_sid: str): SSHSession | None
+    +list_sessions(): list
+}
+
+SSHSessionStore "1" *-- "many" SSHSession : manages
+
+```
