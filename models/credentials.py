@@ -164,7 +164,6 @@ def encrypt(data: str, encoding: str = "utf-8") -> bytes:
     :return: The encrypted data as bytes.
     """
 	encrypted_data = cipher.encrypt(data.encode(encoding))
-	logging.debug(f"Encrypted '{data}' to '{encrypted_data}'")
 	return encrypted_data
 
 
@@ -177,6 +176,5 @@ def decrypt(data: bytes, encoding: str = "utf-8") -> str:
     :return: The decrypted string.
     """
 	decrypted_data = cipher.decrypt(data).decode(encoding)
-	logging.debug(f"Decrypted '{data}' to '{decrypted_data}'")
 	return decrypted_data
 

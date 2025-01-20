@@ -1,12 +1,11 @@
 import logging
 import uuid
 
-import werkzeug.exceptions
 from eventlet.green.http import HTTPStatus
 from flask import request, render_template, Blueprint
 from werkzeug.datastructures import FileStorage
 
-from utils import sanitize_input, create_json_response
+from utils import sanitize_json_input, create_json_response
 from stores import CREDENTIAL_STORE
 from models.credentials import Credentials
 
@@ -77,7 +76,7 @@ def create_credentials():
 					status_code=HTTPStatus.BAD_REQUEST
 				)
 
-			data = sanitize_input(req_json)
+			data = sanitize_json_input(req_json)
 			new_credentials = get_credentials_from_request(credentials_uuid, data)
 			CREDENTIAL_STORE.add_credentials(new_credentials)
 		else:
