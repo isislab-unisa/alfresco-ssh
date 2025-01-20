@@ -42,23 +42,21 @@ def handle_start_session(data, socketio: SocketIO):
 	EVENT: `connect`
 	"""
 	flask_sid = request.sid
-	credentials_uuid = data['credentials_uuid']
+	credentials_uuid = data.get("credentials_uuid")
 
-	credentials = CREDENTIAL_STORE.get_credentials(credentials_uuid)
+	if not credentials_uuid:
+		logging.error(f"[flask_sid={flask_sid}] Missing 'credentials_uuid' in data")
+		return close_connection(flask_sid, socketio, "Invalid request data")
 
-	if credentials is None:
+	credentials = CREDENTIAL_STORE.remove_credentials(credentials_uuid)
+	logging.debug(f"[flask_sid={flask_sid}] Credentials with credentials_uuid {credentials_uuid} removed from credentials store")
+
+	if not credentials:
 		logging.warning(f"[flask_sid={flask_sid}] No credentials found with credentials_uuid {credentials_uuid}")
-		close_connection(flask_sid, socketio)
-		disconnect()
-		return
-
-
-	logging.info(f"[flask_sid={flask_sid}] New client connected with credentials_uuid {credentials_uuid}")
+		return close_connection(flask_sid, socketio, f"No credentials found for {credentials_uuid}")
 
 	try:
-		CREDENTIAL_STORE.remove_credentials(credentials_uuid)
-
-		logging.debug(f"[flask_sid={flask_sid}] Credentials with credentials_uuid {credentials_uuid} removed from credentials store")
+		logging.info(f"[flask_sid={flask_sid}] New client connected with credentials_uuid {credentials_uuid}")
 
 		hostname = credentials.decrypt_hostname()
 		port = credentials.decrypt_port()
@@ -219,7 +217,7 @@ def handle_resize(data):
 
 
 
-def close_connection(flask_sid, socketio: SocketIO):
+def close_connection(flask_sid, socketio: SocketIO, message: str = "The session was closed"):
 	"""
 	Disconnects the client terminal and closes the SSH session.
 	"""
@@ -234,7 +232,7 @@ def close_connection(flask_sid, socketio: SocketIO):
 		logging.info(f"[flask_sid={flask_sid}] SSH session closed")
 
 		# Notify the client terminal to close the connection
-		socketio.emit("ssh-output", {"output": f"{RED}The session was closed{RESET}"}, namespace="/ssh", to=flask_sid)
+		socketio.emit("ssh-output", {"output": f"{RED}{message}{RESET}"}, namespace="/ssh", to=flask_sid)
 		socketio.emit("disconnect", namespace="/ssh", to=flask_sid)
 		disconnect()
 		logging.info(f"[flask_sid={flask_sid}] Socket connection closed")
