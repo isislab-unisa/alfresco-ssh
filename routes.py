@@ -1,12 +1,13 @@
 import logging
 import uuid
 
+from werkzeug.exceptions import BadRequest
 from eventlet.green.http import HTTPStatus
 from flask import request, render_template, Blueprint
 from werkzeug.datastructures import FileStorage
 
 from utils import sanitize_json_input, create_json_response
-from stores import CREDENTIAL_STORE
+from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
 from models.credentials import Credentials
 
 routes_blueprint = Blueprint('routes', __name__)
@@ -67,57 +68,72 @@ def create_credentials():
 
 			try:
 				req_json = request.json
-			except Exception as e:
-				# Bad JSON
-				logging.warning(f"[credentials_uuid={credentials_uuid}] Error: {e}")
+			except BadRequest as e:
+				logging.warning(f"[credentials_uuid={credentials_uuid}] Credentials creation failed due to Bad JSON - {e}")
 				return create_json_response(
 					error=True,
 					error_message=str(e),
-					status_code=HTTPStatus.BAD_REQUEST
+					status_code=HTTPStatus.BAD_REQUEST,
+					identifier=credentials_uuid,
+				)
+			except Exception as e:
+				logging.warning(f"[credentials_uuid={credentials_uuid}] Credentials creation failed with an unhandled type of exception ({type(e)}) - {e}")
+				return create_json_response(
+					error=True,
+					error_message=str(e),
+					status_code=HTTPStatus.BAD_REQUEST,
+					identifier=credentials_uuid,
 				)
 
-			data = sanitize_json_input(req_json)
+			data = sanitize_json_input(req_json, credentials_uuid)
 			new_credentials = get_credentials_from_request(credentials_uuid, data)
 			CREDENTIAL_STORE.add_credentials(new_credentials)
 		else:
+			logging.warning(f"[credentials_uuid={credentials_uuid}] Credentials creation failed - Unsupported Content-Type: {content_type}")
 			return create_json_response(
 				error=True,
-				error_message="Unsupported content type",
-				status_code=HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+				error_message=f"Unsupported Content-Type: {content_type}",
+				status_code=HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+				identifier=credentials_uuid,
 			)
 	except KeyError as e:
-		logging.warning(f"[{credentials_uuid}] Error: {e}")
+		logging.warning(f"[credentials_uuid={credentials_uuid}] Credentials creation failed - {e}")
 		return create_json_response(
 			error=True,
 			error_message="Missing fields",
-			status_code=HTTPStatus.BAD_REQUEST
+			status_code=HTTPStatus.BAD_REQUEST,
+			identifier=credentials_uuid,
 		)
 	except ValueError as e:
-		logging.warning(f"[credentials_uuid={credentials_uuid}] Error: {e}")
+		logging.warning(f"[credentials_uuid={credentials_uuid}] Credentials creation failed - {e}")
 		return create_json_response(
 			error=True,
 			error_message=str(e),
-			status_code=HTTPStatus.BAD_REQUEST
+			status_code=HTTPStatus.BAD_REQUEST,
+			identifier=credentials_uuid,
 		)
 	except Exception as e:
-		logging.error(f"[credentials_uuid={credentials_uuid}] Internal Server Error: {type(e)}")
+		logging.error(f"[credentials_uuid={credentials_uuid}] Credentials creation failed with an unhandled type of exception ({type(e)}) - {e}")
 		return create_json_response(
 			error=True,
 			error_message="Internal server error",
-			status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+			status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+			identifier=credentials_uuid,
 		)
 
-	logging.info(f"[credentials_uuid={credentials_uuid}] Credentials created and stored")
+	logging.info(f"[credentials_uuid={credentials_uuid}] Credentials successfully created and stored")
 
 	return create_json_response(
 		json={"credentials_uuid": credentials_uuid},
-		status_code=HTTPStatus.OK
+		status_code=HTTPStatus.OK,
+		identifier=credentials_uuid,
 	)
 
 
 @routes_blueprint.route("/")
 def terminal():
 	credentials_uuid = request.args.get("connect") # Query param
+	logging.info(f"[credentials_uuid={credentials_uuid}] Requested a terminal")
 	credentials = CREDENTIAL_STORE.get_credentials(credentials_uuid)
 
 	if credentials is None:
@@ -125,9 +141,15 @@ def terminal():
 		return create_json_response(
 			error=True,
 			error_message=f"Could not find stored credentials with ID {credentials_uuid}",
-			status_code=HTTPStatus.NOT_FOUND
+			status_code=HTTPStatus.NOT_FOUND,
+			identifier=credentials_uuid,
 		)
 
-	logging.info(f"[credentials_uuid={credentials_uuid}] Requested a terminal, switching to flask_sid for log identification")
 	return render_template("index.html", credentials_uuid=credentials_uuid)
 
+
+@routes_blueprint.route("/log_stores")
+def log_stores():
+	logging.debug(f"CREDENTIALS_STORE: {CREDENTIAL_STORE.list_credentials()}")
+	logging.debug(f"SSH_SESSION_STORE: {SSH_SESSION_STORE.list_sessions()}")
+	return '', 204

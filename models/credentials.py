@@ -20,17 +20,20 @@ class Credentials:
         :param password: The password for authentication (optional).
         :raises ValueError: If validation of inputs fails.
 		"""
-		if (ssh_key is not None and password is not None) or (ssh_key is None and password is None):
-			raise ValueError("You must provide exactly one of ssh_key or password.")
+		if ssh_key is None and password is None:
+			raise ValueError("Not provided 'ssh_key' or 'password' - provide exactly one of them")
+
+		if ssh_key is not None and password is not None:
+			raise ValueError("Provided both 'ssh_key' and 'password' - provide exactly one of them")
 
 		if hostname is None:
-			raise ValueError("You must provide a hostname.")
+			raise ValueError("Not provided - 'hostname'")
 
 		if username is None:
-			raise ValueError("You must provide a username.")
+			raise ValueError("Not provided - 'username'")
 
 		if not self.is_valid_uuid(credentials_uuid):
-			raise ValueError("Invalid UUID provided for credentials_uuid.")
+			raise ValueError("Invalid UUID provided")
 
 		self.uuid = credentials_uuid
 		self.hostname = encrypt(hostname)
@@ -44,11 +47,11 @@ class Credentials:
 		if ssh_key is not None:
 			self.ssh_key = encrypt(ssh_key)
 			self.authentication_type = "ssh_key"
-		else:
+		elif password is not None:
 			self.password = encrypt(password)
 			self.authentication_type = "password"
-
-		logging.debug(f"[credentials_uuid={credentials_uuid}] Credentials created")
+		else:
+			raise ValueError("Not provided 'ssh_key' or 'password' - provide exactly one of them")
 
 	def decrypt_hostname(self) -> str:
 		"""Decrypts and returns the hostname."""
@@ -146,9 +149,7 @@ class CredentialStore:
         Returns a list of all credentials' UUIDs currently in the store.
         """
 		with self.lock:
-			keys = list(self.store.keys())
-			logging.debug(f"Listing all credentials UUIDs: {keys}")
-			return keys
+			return list(self.store.keys())
 
 
 CREDENTIALS_KEY = os.getenv("CREDENTIALS_KEY", Fernet.generate_key())

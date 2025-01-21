@@ -99,8 +99,13 @@ def main():
 
 
 def graceful_shutdown(sig, frame):
+	"""
+	:param sig: Needed by signal.
+	:param frame: Needed by signal.
+	"""
 	logging.info("Shutting down the server gracefully...")
 	socketio.stop()
+	print("Done, exiting")
 	sys.exit(0)
 
 

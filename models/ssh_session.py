@@ -97,6 +97,4 @@ class SSHSessionStore:
         :return: A list of Flask session IDs.
         """
 		with self.lock:
-			keys = list(self.store.keys())
-			logging.debug(f"Listing all active SSH session IDs: {keys}")
-			return keys
+			return list(self.store.keys())

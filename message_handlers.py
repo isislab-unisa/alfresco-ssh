@@ -1,12 +1,12 @@
 import logging
 
 from flask import request
-from flask_socketio import SocketIO, disconnect
+from flask_socketio import SocketIO
 
 from message_senders import send_ssh_output
 from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
 from models.ssh_session import SSHSession
-from utils import RED, RESET, establish_ssh_connection
+from utils import establish_ssh_connection, close_connection
 
 
 def register_message_handlers(socketio: SocketIO):
@@ -49,14 +49,13 @@ def handle_start_session(data, socketio: SocketIO):
 		return close_connection(flask_sid, socketio, "Invalid request data")
 
 	credentials = CREDENTIAL_STORE.remove_credentials(credentials_uuid)
-	logging.debug(f"[flask_sid={flask_sid}] Credentials with credentials_uuid {credentials_uuid} removed from credentials store")
 
 	if not credentials:
 		logging.warning(f"[flask_sid={flask_sid}] No credentials found with credentials_uuid {credentials_uuid} in the credentials store")
 		return close_connection(flask_sid, socketio, f"No credentials found for {credentials_uuid}")
 
 	try:
-		logging.info(f"[flask_sid={flask_sid}] New client logged in with UUID {credentials_uuid}")
+		logging.info(f"[flask_sid={flask_sid}] New terminal created, switching log identification to flask_sid from credentials uuid {credentials_uuid}")
 		ssh_client, ssh_channel = establish_ssh_connection(credentials, flask_sid)
 		ssh_session = SSHSession(
 			flask_request_sid=flask_sid,
@@ -165,36 +164,4 @@ def handle_resize(data):
 			logging.debug(f"[flask_sid={flask_sid}] Resizing terminal window to cols={data['cols']}, rows={data['rows']}")
 			ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
 
-
-
-def close_connection(flask_sid, socketio: SocketIO,
-					 message: str = "The session was closed", timeout: bool = False):
-	"""
-	Disconnects the client terminal and closes the SSH session.
-
-	:param flask_sid: The flask SID correlated to the SSH connection.
-	:param socketio: The socketio object.
-	:param message: The message to send to the client before the closure of the socket.
-	:param timeout: Whether to send the timeout event or not.
-	"""
-	session = SSH_SESSION_STORE.remove_and_close_session(flask_sid)
-
-	if session:
-		# Notify the client terminal to close the connection
-		socketio.emit("ssh-output",
-					  {
-						  "output": f"{RED}{message}{RESET}",
-						  "timeout": timeout
-					  },
-					  namespace="/ssh",
-					  to=flask_sid
-		)
-		socketio.emit("disconnect",
-					  namespace="/ssh",
-					  to=flask_sid
-		)
-		#disconnect() # I don't know if this is necessary
-		logging.info(f"[flask_sid={flask_sid}] Socket connection closed.")
-	else:
-		logging.warning(f"[flask_sid={flask_sid}] Could not close the SSH connection because it was not found in the session store (it could have been already closed).")
 
