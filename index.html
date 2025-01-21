@@ -117,6 +117,7 @@
         if (!is_disconnected) {
             console.log("Browser terminal received new data:", data);
             last_active = new Date();
+            console.log("Updated last active timestamp to now")
             socket.emit("ssh-input", {input: data});
         }
     });
@@ -127,8 +128,9 @@
      */
     socket.on("ssh-output", (data) => {
         console.log("New output received from server:", data.output);
-        if (data.timeout === undefined) {
+        if (data.timeout === undefined || data.timeout === false) {
             last_active = new Date();
+            console.log("Updated last active timestamp to now")
         }
         term.write(data.output);
     });
@@ -143,11 +145,12 @@
     });
 
     const intervalId = setInterval(() => {
+        // Calculate the elapsed time
         const now = new Date();
         const timeElapsed = (now - last_active) / 1000; // Convert to seconds
-        const maxToleratedSeconds = 10;
 
-        if (timeElapsed >= maxToleratedSeconds) {
+        const maxToleratedSeconds = 10;
+        if (timeElapsed > maxToleratedSeconds) {
             console.log(`More than ${maxToleratedSeconds} seconds have passed since the last activity.`);
             socket.emit("timeout");
             clearInterval(intervalId); // Stop the interval

@@ -1,6 +1,15 @@
+import io
 import logging
 from http import HTTPStatus
+from typing import Tuple
+
+import paramiko
 from flask import jsonify
+from paramiko.channel import Channel
+from paramiko.client import SSHClient
+from paramiko.pkey import PKey
+
+from models.credentials import Credentials
 
 # Colors
 GREEN = "\033[92m"
@@ -56,3 +65,66 @@ def sanitize_json_input(data):
 	return sanitized_data
 
 
+def load_private_key(key_str) -> PKey:
+	"""
+	Load an SSH key from a string.
+
+	:param key_str: The key as a string to load.
+	:return: The private key in the correct format.
+	:raises ValueError
+	"""
+	key_file = io.StringIO(key_str)
+	# Check for the type of key
+	for key_class in (paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey, paramiko.Ed25519Key):
+		try:
+			return key_class.from_private_key(key_file)
+		except paramiko.SSHException:
+			key_file.seek(0)  # Reset the ssh key pointer position to try with another type
+	raise ValueError("Invalid private key format. Accepted key formats are RSA, DSS, ECDSA, ED25519.")
+
+
+def establish_ssh_connection(credentials: Credentials, flask_sid) -> Tuple[SSHClient, Channel]:
+	"""
+	Establishes an SSH connection using the provided credentials.
+
+	:param credentials: The credentials to establish the SSH connection.
+	:param flask_sid: The flask SID correlated to the SSH connection.
+	:returns: The Paramiko SSH Client and the Paramiko SSH Channel for an interactive shell.
+	:raises ValueError
+	"""
+	ssh_client = paramiko.SSHClient()
+	ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+	hostname = credentials.decrypt_hostname()
+	port = int(credentials.decrypt_port())
+	username = credentials.decrypt_username()
+
+	if credentials.authentication_type == "password":
+		logging.debug(f"[flask_sid={flask_sid}] Establishing SSH connection with password...")
+		password = credentials.decrypt_password()
+		ssh_client.connect(
+		    hostname=hostname,
+		    port=port,
+		    username=username,
+		    password=password,
+		    look_for_keys=False,
+		    allow_agent=False,
+		)
+	elif credentials.authentication_type == "ssh_key":
+		logging.debug(f"[flask_sid={flask_sid}] Establishing SSH connection with SSH key...")
+		private_key_file = credentials.decrypt_ssh_key()
+		private_key = load_private_key(private_key_file)
+		ssh_client.connect(
+			hostname=hostname,
+			port=port,
+			username=username,
+			pkey=private_key,
+			look_for_keys=False,
+			allow_agent=False,
+		)
+	else:
+		raise ValueError("Invalid authentication method")
+
+	ssh_channel = ssh_client.invoke_shell()
+	ssh_channel.settimeout(0.0)
+	return ssh_client, ssh_channel
