@@ -74,12 +74,18 @@ def main():
 		sys.exit(1)
 
 	if args.host == "localnetwork":
-		local_network_ip = socket.gethostbyname(socket.gethostname())
-		logging.info(f"serving on local network http://{local_network_ip}:{args.port}")
+		try:
+			local_network_ip = socket.gethostbyname(socket.gethostname())
+			logging.info(f"Serving on local network http://{local_network_ip}:{args.port}")
+			args.host = "0.0.0.0"
+		except socket.gaierror as e:
+			logging.fatal(f"Error resolving local network IP: {e}")
+			sys.exit(1)
 	elif args.host == "localhost":
-		logging.info(f"serving on http://{args.host}:{args.port}")
+		logging.info(f"Serving on http://{args.host}:{args.port}")
+		args.host = "127.0.0.1"
 	else:
-		logging.fatal("Invalid host, it must be either localhost or localnetwork")
+		logging.fatal("Invalid host, it must be either 'localhost' or 'localnetwork'")
 		sys.exit(1)
 
 	################################
