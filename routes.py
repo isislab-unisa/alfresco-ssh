@@ -132,7 +132,7 @@ def create_credentials():
 
 @routes_blueprint.route("/")
 def terminal():
-	credentials_uuid = request.args.get("connect") # Query param
+	credentials_uuid = request.args.get("connection") # Query param
 	logging.info(f"[credentials_uuid={credentials_uuid}] Requested a terminal")
 	credentials = CREDENTIAL_STORE.get_credentials(credentials_uuid)
 
