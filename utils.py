@@ -164,3 +164,5 @@ def close_connection(flask_sid, socketio: SocketIO,
 		logging.info(f"[flask_sid={flask_sid}] Socket connection closed")
 	else:
 		logging.warning(f"[flask_sid={flask_sid}] Could not close the SSH connection because it was not found in the session store (it could have been already closed)")
+		disconnect()
+		logging.info(f"[flask_sid={flask_sid}] Socket connection closed")

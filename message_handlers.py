@@ -1,7 +1,7 @@
 import logging
 
 from flask import request
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, disconnect
 
 from message_senders import send_ssh_output
 from stores import CREDENTIAL_STORE, SSH_SESSION_STORE
@@ -146,7 +146,6 @@ def handle_timeout(socketio: SocketIO):
 
 	close_connection(flask_sid, socketio, "Timed-out, this session was inactive for too long", True)
 
-
 def handle_resize(data):
 	"""
 	Handles terminal dimensions resizing.
@@ -163,5 +162,8 @@ def handle_resize(data):
 		if ssh_channel is not None:
 			logging.debug(f"[flask_sid={flask_sid}] Resizing terminal window to cols={data['cols']}, rows={data['rows']}")
 			ssh_channel.resize_pty(width=data["cols"], height=data["rows"])
-
+	else:
+		logging.warning(f"[flask_sid={flask_sid}] Resize requested, but no SSH session was found in the session store, closing the socket connection...")
+		disconnect()
+		logging.info(f"[flask_sid={flask_sid}] Socket connection closed")
 
