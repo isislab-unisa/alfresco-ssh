@@ -124,7 +124,7 @@ def create_credentials():
 	logging.info(f"[credentials_uuid={credentials_uuid}] Credentials successfully created and stored")
 
 	return create_json_response(
-		json={"credentials_uuid": credentials_uuid},
+		json={"connection_uuid": credentials_uuid},
 		status_code=HTTPStatus.OK,
 		identifier=credentials_uuid,
 	)
