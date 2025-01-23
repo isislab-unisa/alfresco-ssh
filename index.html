@@ -93,6 +93,7 @@
     const socket = io.connect("/ssh");
     let is_disconnected = false;
     let last_active = new Date();
+    const maxInactiveToleratedSeconds = 60*10;
 
     /**
      * The UUID that will be used to start a new session
@@ -149,9 +150,8 @@
         const now = new Date();
         const timeElapsed = (now - last_active) / 1000; // Convert to seconds
 
-        const maxToleratedSeconds = 10;
-        if (timeElapsed > maxToleratedSeconds) {
-            console.log(`More than ${maxToleratedSeconds} seconds have passed since the last activity.`);
+        if (timeElapsed > maxInactiveToleratedSeconds) {
+            console.log(`More than ${maxInactiveToleratedSeconds} seconds have passed since the last activity.`);
             socket.emit("timeout");
             clearInterval(intervalId); // Stop the interval
         }
