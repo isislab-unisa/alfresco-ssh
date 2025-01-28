@@ -101,14 +101,22 @@
     const credentials_uuid = "{{ credentials_uuid }}";
 
     /**
-     * Fit the terminal to the screen when the connection is established
+     * Start the connection with the server
      * @event `connect`
      */
     socket.on("connect", () => {
         socket.emit("start-session", {credentials_uuid: credentials_uuid});
-        console.log("Connected");
-        fitToScreen();
+        console.log("Connecting to server");
     });
+
+    /**
+     * Fit the terminal to the screen when the connection is established
+     * @event `connection-ready`
+     */
+    socket.on("connection-ready", () => {
+        console.log("Connection is ready")
+        fitToScreen();
+    })
 
     /**
      * Take the inserted input from the terminal and send it to the server

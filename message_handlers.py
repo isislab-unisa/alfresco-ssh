@@ -73,6 +73,7 @@ def handle_start_session(data, socketio: SocketIO):
 			flask_sid=flask_sid,
 			socketio=socketio
 		)
+		socketio.emit("connection-ready", {"ready": True}, namespace="/ssh", to=flask_sid)
 	except ValueError as e:
 		logging.exception(f"[flask_sid={flask_sid}] Failed to establish SSH connection: {e}")
 		close_connection(flask_sid, socketio, f"Failed to establish an SSH connection: {e}")
