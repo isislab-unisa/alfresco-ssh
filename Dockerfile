@@ -43,4 +43,4 @@ EXPOSE 5000
 
 # Run the application.
 # Use localnetwork, or the server will not be reachable from outside the container.
-CMD ["python", "main.py", "--debug", "--host", "localnetwork", "--port", "5000"]
+CMD ["python", "main.py", "--host", "localnetwork", "--port", "5000"]
