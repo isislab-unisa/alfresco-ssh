@@ -36,9 +36,15 @@ implementation with a browser-based terminal client interface.
 Full documentation and guides are available in the [Wiki](https://github.com/isislab-unisa/alfresco-ssh/wiki).
 
 
+## Other modules
+This project is part of a modular architecture called **VM Lab**. Find out more about it [here](https://github.com/isislab-unisa/vm-lab/wiki/The-External-Modules).
+
+- [VM Lab](https://github.com/isislab-unisa/vm-lab)
+- [SFTP Module](https://github.com/isislab-unisa/alfresco-sftp)
+
 ## Contributing
 
-- See [Contributing-To-The-Wiki](https://github.com/isislab-unisa/vm-lab/alfresco-ssh/Contributing-To-The-Wiki) for documentation standards and contribution guidelines.
+- See [Contributing-To-The-Wiki](https://github.com/isislab-unisa/alfresco-ssh/wiki/Contributing-To-The-Wiki) for documentation standards and contribution guidelines.
 - Issues and feature requests are welcome!
 
 ## License
